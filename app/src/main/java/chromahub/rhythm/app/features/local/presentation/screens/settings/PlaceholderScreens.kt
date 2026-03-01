@@ -14855,6 +14855,7 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(bottom = 24.dp)
             ) {
                 // Header with animation

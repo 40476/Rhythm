@@ -66,6 +66,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import chromahub.rhythm.app.shared.presentation.components.common.CollapsibleHeaderScreen
 import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveFilledIconButton
 import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveShapes
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -687,6 +689,7 @@ private fun LocalNavigationContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars) // Handle system navigation bars once
+                    .padding(bottom = 4.dp) // Minimum bottom margin for gesture navigation safety
             ) {
                 // Global MiniPlayer (hidden on full player screen) with bounce entrance animation
                 // Show at bottom on phones, or on right side if tablet miniplayer is enabled
@@ -2045,6 +2048,25 @@ private fun LocalNavigationContent(
                     val artistName = backStackEntry.arguments?.getString("artistName")?.let { Uri.decode(it) } ?: ""
                     val favoriteSongs by viewModel.favoriteSongs.collectAsState()
                     
+                    // Write permission launcher for Android 11+ metadata editing
+                    val writePermissionLauncher = rememberLauncherForActivityResult(
+                        contract = androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+                    ) { result: ActivityResult ->
+                        if (result.resultCode == android.app.Activity.RESULT_OK) {
+                            viewModel.completeMetadataWriteAfterPermission(
+                                onSuccess = {
+                                    android.widget.Toast.makeText(context, "Metadata saved successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                onError = { errorMessage ->
+                                    android.widget.Toast.makeText(context, errorMessage, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        } else {
+                            viewModel.cancelPendingMetadataWrite()
+                            android.widget.Toast.makeText(context, "Permission denied. Changes saved to library only.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    
                     // State for bottom sheets
                     var showAddToPlaylistSheet by remember { mutableStateOf(false) }
                     var selectedSongForPlaylist by remember { mutableStateOf<chromahub.rhythm.app.shared.data.model.Song?>(null) }
@@ -2152,7 +2174,14 @@ private fun LocalNavigationContent(
                                         android.widget.Toast.makeText(context, errorMessage, android.widget.Toast.LENGTH_LONG).show()
                                     },
                                     onPermissionRequired = { pendingRequest ->
-                                        android.widget.Toast.makeText(context, "Permission required to modify file metadata", android.widget.Toast.LENGTH_SHORT).show()
+                                        try {
+                                            val intentSenderRequest = androidx.activity.result.IntentSenderRequest.Builder(
+                                                pendingRequest.intentSender
+                                            ).build()
+                                            writePermissionLauncher.launch(intentSenderRequest)
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Permission required to modify file metadata", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 )
                             }
@@ -2171,11 +2200,21 @@ private fun LocalNavigationContent(
                             onPlayAll = { songs -> viewModel.playSongs(songs) },
                             onShufflePlay = { songs -> viewModel.playShuffled(songs) },
                             onAddToQueue = { song -> viewModel.addSongToQueue(song) },
-                            onAddSongToPlaylist = { },
+                            onAddSongToPlaylist = { song ->
+                                selectedSongForPlaylist = song
+                                showAddToPlaylistSheet = true
+                            },
                             onPlayerClick = { navController.navigate(Screen.Player.route) },
                             sheetState = albumBottomSheetState,
                             haptics = LocalHapticFeedback.current,
                             onPlayNext = { song -> viewModel.playNext(song) },
+                            onToggleFavorite = { song -> viewModel.toggleFavorite(song) },
+                            favoriteSongs = favoriteSongs,
+                            onShowSongInfo = { song ->
+                                selectedSongForInfo = song
+                                showSongInfoSheet = true
+                            },
+                            onAddToBlacklist = { song -> appSettings.addToBlacklist(song.id) },
                             currentSong = currentSong,
                             isPlaying = isPlaying
                         )

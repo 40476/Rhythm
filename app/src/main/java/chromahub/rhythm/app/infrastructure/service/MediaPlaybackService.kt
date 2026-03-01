@@ -577,8 +577,20 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
             else -> "Playback error: ${error.message}"
         }
         Log.e(TAG, "Playback error: $message", error)
-        // Note: Toast messages should be shown from UI layer, not service
-        // Consider using a notification or callback to inform the user
+        
+        // Gracefully recover from playback errors by skipping to the next track
+        // This prevents codec/format errors from stopping playback entirely
+        try {
+            if (player.hasNextMediaItem()) {
+                Log.w(TAG, "Recovering from playback error - skipping to next track")
+                player.seekToNextMediaItem()
+                player.prepare()
+            } else {
+                Log.w(TAG, "No next track available for error recovery")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to recover from playback error", e)
+        }
     }
 
     private fun createController() {

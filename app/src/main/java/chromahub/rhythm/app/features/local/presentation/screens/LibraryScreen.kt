@@ -1829,7 +1829,7 @@ fun SingleCardSongsContent(
     
     // Loading state for async category computation
     var isLoading by remember { mutableStateOf(true) }
-    var preparedSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var preparedSongs by remember { mutableStateOf(songs) }
     var categories by remember { mutableStateOf<List<String>>(listOf("All")) }
     
     // Helper function to split artist names
@@ -2135,7 +2135,8 @@ fun SingleCardSongsContent(
     }
 
     // Filter songs based on selected category - computed asynchronously
-    var filteredSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    // Initialize with all songs (not emptyList) so LazyListState can restore scroll position correctly
+    var filteredSongs by remember { mutableStateOf<List<Song>>(songs) }
     
     LaunchedEffect(preparedSongs, selectedCategory, favoriteSongs) {
         filteredSongs = withContext(Dispatchers.Default) {
@@ -2682,7 +2683,7 @@ fun SingleCardPlaylistsContent(
     
     // Loading state for initial render
     var isLoading by remember { mutableStateOf(true) }
-    var preparedPlaylists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
+    var preparedPlaylists by remember { mutableStateOf(playlists) }
     
     // Prepare and sort playlists asynchronously to avoid blocking UI on tab switch
     LaunchedEffect(playlists, playlistSortOrder) {
@@ -2917,7 +2918,7 @@ fun SingleCardAlbumsContent(
     
     // Loading state for initial render
     var isLoading by remember { mutableStateOf(true) }
-    var preparedAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var preparedAlbums by remember { mutableStateOf(albums) }
     
     // Prepare albums asynchronously to avoid blocking UI on tab switch
     LaunchedEffect(albums) {
@@ -5129,7 +5130,7 @@ fun SingleCardArtistsContent(
     
     // Loading state for async sorting
     var isLoading by remember { mutableStateOf(true) }
-    var sortedArtists by remember { mutableStateOf<List<Artist>>(emptyList()) }
+    var sortedArtists by remember { mutableStateOf(artists) }
     
     // Define categories for artists
     val categories = remember(artists) {

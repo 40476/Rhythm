@@ -695,12 +695,16 @@ private fun ModernScrollableContent(
     // Calculate safe item count for carousel
     val carouselItemCount = maxOf(1, minOf(currentFeaturedAlbums.size, discoverItemCount))
     
-    // Safe carousel state initialization with key to force recreation on count changes
+    // Safe carousel state initialization using remember (not rememberSaveable)
+    // to prevent crash from invalid state restoration of currentPageOffsetFraction
     val featuredCarouselState = key(carouselItemCount) {
-        rememberCarouselState(
-            initialItem = 0,
-            itemCount = { carouselItemCount }
-        )
+        remember {
+            androidx.compose.material3.carousel.CarouselState(
+                currentItem = 0,
+                currentItemOffsetFraction = 0f,
+                itemCount = { carouselItemCount }
+            )
+        }
     }
     
     // Reset carousel when item count changes to prevent state restoration crash

@@ -640,7 +640,10 @@ class MusicRepository(context: Context) {
             val album = cursor.getString(indices.album)?.trim() ?: "Unknown Album"
             val albumId = cursor.getLong(indices.albumId)
             val duration = cursor.getLong(indices.duration)
-            val track = cursor.getInt(indices.track)
+            val rawTrack = cursor.getInt(indices.track)
+            // MediaStore encodes disc number in track: e.g. 1001 = disc 1, track 1.
+            // Extract the actual track number by taking modulo 1000.
+            val track = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack
             val year = cursor.getInt(indices.year)
             val dateAdded = cursor.getLong(indices.dateAdded) * 1000L
             val size = cursor.getLong(indices.size)
@@ -1311,10 +1314,11 @@ class MusicRepository(context: Context) {
      */
     suspend fun refreshMusicData() {
         Log.d(TAG, "Refreshing music data...")
-        // Simply calling loadSongs, loadAlbums, loadArtists will re-query MediaStore
-        // and provide fresh data. The ViewModel will then update its StateFlows.
-        // No need to return anything here, as the ViewModel will call these methods
-        // and collect the results.
+        
+        // Invalidate in-memory cache to force fresh query
+        cachedSongs = null
+        cacheTimestamp = 0L
+        
         loadSongs(forceRefresh = true)
         loadAlbums()
         loadArtists()

@@ -46,6 +46,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -210,7 +211,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     FestiveOverlayFromSettings {
                         // Show splash screen first, then transition to the app
-                        var showSplash by remember { mutableStateOf(true) }
+                        var showSplash by rememberSaveable { mutableStateOf(true) }
                         val hasShownBetaPopup by appSettings.hasShownBetaPopup.collectAsState()
                         var showBetaPopup by remember { mutableStateOf(false) }
                         val currentAppVersion by appUpdaterViewModel.currentVersion.collectAsState() // Observe current version

@@ -68,6 +68,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "MusicViewModel"
     private val repository = MusicRepository(application)
     
+    // Job for debouncing ContentObserver-triggered refreshes
+    private var mediaStoreRefreshJob: kotlinx.coroutines.Job? = null
+    
     // Playback stats repository for enhanced tracking
     private val playbackStatsRepository = PlaybackStatsRepository.getInstance(application)
     
@@ -1087,11 +1090,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
         
         // Register ContentObserver for automatic MediaStore updates
+        // Use a full refresh instead of incremental scan to detect removed/re-added songs.
+        // Cancel any pending refresh job before scheduling a new one (debounce pattern)
         repository.registerMediaStoreObserver {
-            Log.d(TAG, "MediaStore changed, scheduling incremental scan")
-            viewModelScope.launch {
-                delay(2000) // Debounce - wait for changes to settle
-                performIncrementalScan()
+            Log.d(TAG, "MediaStore changed, scheduling full library refresh")
+            mediaStoreRefreshJob?.cancel()
+            mediaStoreRefreshJob = viewModelScope.launch {
+                delay(3000) // Debounce - wait 3s for changes to fully settle before querying
+                performMediaStoreRefresh()
             }
         }
         
@@ -1235,6 +1241,38 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error during incremental scan", e)
+        }
+    }
+    
+    /**
+     * Perform a full library refresh triggered by MediaStore ContentObserver.
+     * Unlike incremental scan, this detects removed, re-added, and new songs properly.
+     * Runs on IO dispatcher to avoid blocking the main thread.
+     */
+    private suspend fun performMediaStoreRefresh() {
+        Log.d(TAG, "Performing full MediaStore refresh...")
+        try {
+            val currentCount = _songs.value.size
+            // Run all heavy IO work off the main thread
+            val (freshSongs, freshAlbums, freshArtists) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                repository.refreshMusicData()
+                val songs = repository.loadSongs(
+                    forceRefresh = false, // cache was just refreshed by refreshMusicData()
+                    allowedFormats = allowedFormats.value,
+                    minimumBitrate = minimumBitrate.value,
+                    minimumDuration = minimumDuration.value
+                )
+                val albums = repository.loadAlbums()
+                val artists = repository.loadArtists()
+                Triple(songs, albums, artists)
+            }
+            _songs.value = freshSongs
+            _albums.value = freshAlbums
+            _artists.value = freshArtists
+            appSettings.setLastScanTimestamp(System.currentTimeMillis())
+            Log.d(TAG, "MediaStore refresh complete: $currentCount -> ${freshSongs.size} songs")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during MediaStore refresh", e)
         }
     }
 
