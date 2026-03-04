@@ -2102,7 +2102,7 @@ fun PlaylistDetailScreen(
                     .background(MaterialTheme.colorScheme.background)
                     .padding(horizontal = 16.dp)
                     .graphicsLayer { 
-                        shadowElevation = 4f
+                        shadowElevation = 0f
                         clip = false
                     }
             ) {
@@ -2686,7 +2686,7 @@ fun PlaylistSongItem(
                             .offset(x = 4.dp, y = 4.dp),
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 2.dp
+                        shadowElevation = 0.dp
                     ) {
                         Box(
                             modifier = Modifier.fillMaxSize(),

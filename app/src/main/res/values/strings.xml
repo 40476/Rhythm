@@ -1599,7 +1599,7 @@
     <string name="settings_ignore_mediastore_covers">Ignore MediaStore Covers</string>
     <string name="settings_ignore_mediastore_covers_desc">Embedded album art</string>
     <string name="settings_lossless_artwork">Lossless Artwork</string>
-    <string name="settings_lossless_artwork_desc">Show cover art as-is without downscaling or compression. May use more memory.</string>
+    <string name="settings_lossless_artwork_desc">Full-quality cover art, no downscaling. Uses more memory.</string>
     <string name="settings_artist_parsing">Artists</string>
     <string name="settings_artist_parsing_desc">Separators, display</string>
     <string name="settings_rhythm_stats">Rhythm Stats</string>

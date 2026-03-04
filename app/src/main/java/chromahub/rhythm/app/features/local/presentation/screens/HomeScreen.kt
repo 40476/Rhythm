@@ -880,12 +880,14 @@ private fun ModernScrollableContent(
                         if (showDiscoverCarousel) {
                             item(key = "section_discover") {
                                 Column {
-                                    ModernSectionTitle(
-                                        title = context.getString(R.string.home_discover_albums),
-                                        subtitle = context.getString(R.string.home_explore_music),
-                                        viewAllAction = onViewAllAlbums
-                                    )
-                                    Spacer(modifier = Modifier.height(20.dp))
+                                    if (showGreeting) {
+                                        ModernSectionTitle(
+                                            title = context.getString(R.string.home_discover_albums),
+                                            subtitle = context.getString(R.string.home_explore_music),
+                                            viewAllAction = onViewAllAlbums
+                                        )
+                                        Spacer(modifier = Modifier.height(20.dp))
+                                    }
                                     if (currentFeaturedAlbums.isNotEmpty()) {
                                         // Use larger carousel for tablets
                                         val tabletCarouselHeight = when (widthSizeClass) {

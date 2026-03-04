@@ -819,7 +819,7 @@ private fun ArtistSongItem(
                                 .offset(x = 4.dp, y = 4.dp),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primary,
-                            shadowElevation = 4.dp
+                            shadowElevation = 0.dp
                         ) {
                             Box(
                                 modifier = Modifier.fillMaxSize(),

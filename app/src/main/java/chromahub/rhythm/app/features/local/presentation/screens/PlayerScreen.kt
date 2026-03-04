@@ -3292,75 +3292,7 @@ fun PlayerScreen(
                             Spacer(modifier = Modifier.height(if (isTablet) 32.dp else 32.dp))
                         }
                     } else {
-                        // Compact mode: Show button to open chips bottom sheet
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    vertical = when {
-                                        isExtraSmallWidth -> 8.dp
-                                        isCompactWidth -> 10.dp
-                                        else -> 12.dp
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            FilledTonalButton(
-                                onClick = {
-                                    HapticUtils.performHapticFeedback(
-                                        context,
-                                        haptic,
-                                        HapticFeedbackType.LongPress
-                                    )
-                                    showCompactChipsSheet = true
-                                },
-                                shape = RoundedCornerShape(
-                                    when {
-                                        isExtraSmallWidth -> 20.dp
-                                        isCompactWidth -> 22.dp
-                                        else -> 24.dp
-                                    }
-                                ),
-                                modifier = Modifier.height(
-                                    when {
-                                        isExtraSmallWidth -> 36.dp
-                                        isCompactWidth -> 38.dp
-                                        else -> 40.dp
-                                    }
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = "More controls",
-                                    modifier = Modifier.size(
-                                        when {
-                                            isExtraSmallWidth -> 18.dp
-                                            isCompactWidth -> 19.dp
-                                            else -> 20.dp
-                                        }
-                                    )
-                                )
-                                Spacer(
-                                    modifier = Modifier.width(
-                                        when {
-                                            isExtraSmallWidth -> 6.dp
-                                            isCompactWidth -> 7.dp
-                                            else -> 8.dp
-                                        }
-                                    )
-                                )
-                                Text(
-                                    "More Controls",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontSize = when {
-                                            isExtraSmallWidth -> 13.sp
-                                            isCompactWidth -> 14.sp
-                                            else -> 15.sp
-                                        }
-                                    )
-                                )
-                            }
-                        }
+                        // Compact mode: no extra button needed — arrow button between bottom controls handles this
                     }
                         Spacer(modifier = Modifier.height(if (isTablet) 12.dp else 22.dp))
                     }
@@ -3405,23 +3337,60 @@ fun PlayerScreen(
                                 tonalElevation = 0.dp,
                                 modifier = if (isCompactWidth) {
                                     Modifier
-                                        .height(if (isCompactHeight) 36.dp else 40.dp)
+                                        .height(if (isCompactHeight) 64.dp else 68.dp)
                                         .weight(1f)
                                 } else {
                                     Modifier.weight(1f)
                                 }
                             ) {
+                                if (isCompactWidth) {
+                                    // Compact: vertical icon + label layout
+                                    val icon = when {
+                                        location?.id?.startsWith("bt_") == true -> RhythmIcons.BluetoothFilled
+                                        location?.id == "wired_headset" -> RhythmIcons.HeadphonesFilled
+                                        location?.id == "speaker" -> RhythmIcons.SpeakerFilled
+                                        else -> RhythmIcons.Location
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(if (isCompactHeight) 32.dp else 36.dp)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSecondary,
+                                                    modifier = Modifier.size(if (isCompactHeight) 18.dp else 20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Output",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            maxLines = 1
+                                        )
+                                    }
+                                } else {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .then(
-                                            if (isCompactWidth) Modifier else Modifier.padding(
-                                                vertical = if (isCompactHeight) 8.dp else 12.dp,
-                                                horizontal = 12.dp
-                                            )
+                                        .padding(
+                                            vertical = if (isCompactHeight) 8.dp else 12.dp,
+                                            horizontal = 12.dp
                                         ),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = if (isCompactWidth) Arrangement.Center else Arrangement.Start
+                                    horizontalArrangement = Arrangement.Start
                                 ) {
                                     // Icon with background
                                     val icon = when {
@@ -3449,38 +3418,37 @@ fun PlayerScreen(
                                         }
                                     }
 
-                                    if (!isCompactWidth) {
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            horizontalAlignment = Alignment.Start
-                                        ) {
-                                            Text(
-                                                text = location?.name ?: "Device Output",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            val displayVolume = if (useSystemVolume) systemVolume else volume
-                                            val volumeText = if (useSystemVolume) "System" else "App"
-                                            Text(
-                                                text = "${(displayVolume * 100).toInt()}% $volumeText",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(20.dp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.Start
+                                    ) {
+                                        Text(
+                                            text = location?.name ?: "Device Output",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val displayVolume = if (useSystemVolume) systemVolume else volume
+                                        val volumeText = if (useSystemVolume) "System" else "App"
+                                        Text(
+                                            text = "${(displayVolume * 100).toInt()}% $volumeText",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
+                                    
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
+                                } // end else (non-compact)
                             }
 
                             // Arrow button - positioned between buttons in compact mode
@@ -3499,7 +3467,7 @@ fun PlayerScreen(
                                         )
                                     )
                                 ) {
-                                    IconButton(
+                                    Surface(
                                         onClick = {
                                             HapticUtils.performHapticFeedback(
                                                 context,
@@ -3508,20 +3476,23 @@ fun PlayerScreen(
                                             )
                                             showCompactChipsSheet = true
                                         },
+                                        shape = RoundedCornerShape(28.dp),
+                                        color = MaterialTheme.colorScheme.tertiaryContainer,
                                         modifier = Modifier
-                                            .width(if (isExtraSmallWidth) 48.dp else 56.dp)
-                                            .height(if (isCompactHeight) 36.dp else 40.dp)
-                                            .background(
-                                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                                shape = RoundedCornerShape(20.dp)
-                                            )
+                                            .width(if (isExtraSmallWidth) 52.dp else 60.dp)
+                                            .height(if (isCompactHeight) 64.dp else 68.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowUp,
-                                            contentDescription = "Show actions",
-                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                            modifier = Modifier.size(if (isCompactHeight) 18.dp else 20.dp)
-                                        )
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.KeyboardArrowUp,
+                                                contentDescription = "Show actions",
+                                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                modifier = Modifier.size(if (isCompactHeight) 22.dp else 24.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3545,23 +3516,54 @@ fun PlayerScreen(
                                 tonalElevation = 0.dp,
                                 modifier = if (isCompactWidth) {
                                     Modifier
-                                        .height(if (isCompactHeight) 36.dp else 40.dp)
+                                        .height(if (isCompactHeight) 64.dp else 68.dp)
                                         .weight(1f)
                                 } else {
                                     Modifier.weight(1f)
                                 }
                             ) {
+                                if (isCompactWidth) {
+                                    // Compact: vertical icon + label layout
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(if (isCompactHeight) 32.dp else 36.dp)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    imageVector = RhythmIcons.Queue,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSecondary,
+                                                    modifier = Modifier.size(if (isCompactHeight) 18.dp else 20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = context.getString(R.string.player_queue),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            maxLines = 1
+                                        )
+                                    }
+                                } else {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .then(
-                                            if (isCompactWidth) Modifier else Modifier.padding(
-                                                vertical = if (isCompactHeight) 8.dp else 12.dp,
-                                                horizontal = 12.dp
-                                            )
+                                        .padding(
+                                            vertical = if (isCompactHeight) 8.dp else 12.dp,
+                                            horizontal = 12.dp
                                         ),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = if (isCompactWidth) Arrangement.Center else Arrangement.Start
+                                    horizontalArrangement = Arrangement.Start
                                 ) {
                                     // Icon with background
                                     Surface(
@@ -3582,36 +3584,35 @@ fun PlayerScreen(
                                         }
                                     }
 
-                                    if (!isCompactWidth) {
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            horizontalAlignment = Alignment.Start
-                                        ) {
-                                            Text(
-                                                text = context.getString(R.string.player_queue),
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "$queuePosition of $queueTotal",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(20.dp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.Start
+                                    ) {
+                                        Text(
+                                            text = context.getString(R.string.player_queue),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "$queuePosition of $queueTotal",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
+                                    
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
+                                } // end else (non-compact)
                             }
                         }  // Close Row for buttons
                     }  // Close AnimatedVisibility

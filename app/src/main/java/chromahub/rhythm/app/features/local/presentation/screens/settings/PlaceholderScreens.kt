@@ -5309,47 +5309,6 @@ fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
                 )
             )
             
-            // Audio Quality Settings (Local mode only)
-            if (appMode == "LOCAL") {
-                add(
-                    SettingGroup(
-                        title = "Audio Quality",
-                        items = listOf(
-                            SettingItem(
-                                Icons.Default.GraphicEq,
-                                "Bit-Perfect Mode",
-                                "Output audio at its native sample rate without resampling. Requires app restart.",
-                                toggleState = bitPerfectMode,
-                                onToggleChange = { appSettings.setBitPerfectMode(it) }
-                            )
-                        )
-                    )
-                )
-            
-                // Album Art Extraction
-                add(
-                    SettingGroup(
-                        title = "Album Art",
-                        items = listOf(
-                            SettingItem(
-                                chromahub.rhythm.app.shared.presentation.components.icons.RhythmIcons.Album,
-                                context.getString(chromahub.rhythm.app.R.string.settings_ignore_mediastore_covers),
-                                context.getString(chromahub.rhythm.app.R.string.settings_ignore_mediastore_covers_desc),
-                                toggleState = ignoreMediaStoreCovers,
-                                onToggleChange = { appSettings.setIgnoreMediaStoreCovers(it) }
-                            ),
-                            SettingItem(
-                                Icons.Default.HighQuality,
-                                context.getString(chromahub.rhythm.app.R.string.settings_lossless_artwork),
-                                context.getString(chromahub.rhythm.app.R.string.settings_lossless_artwork_desc),
-                                toggleState = losslessArtwork,
-                                onToggleChange = { appSettings.setLosslessArtwork(it) }
-                            )
-                        )
-                    )
-                )
-            }
-            
             // Developer/Debugging features group
             add(
                 SettingGroup(
@@ -13652,6 +13611,79 @@ fun HomeScreenCustomizationSettingsScreen(onBackClick: () -> Unit) {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // ==================== GREETING SETTINGS ====================
+            item(key = "greeting_settings_header", contentType = "section_header") {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Greeting",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                )
+            }
+
+            item(key = "greeting_toggle_card", contentType = "settings_card") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(40.dp),
+                                shape = RoundedCornerShape(34.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                tonalElevation = 0.dp
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Face,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "Show Greeting",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Show greeting and Discover section header",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = showGreeting,
+                            onCheckedChange = {
+                                HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                appSettings.setHomeShowGreeting(it)
+                            }
+                        )
                     }
                 }
             }

@@ -192,6 +192,7 @@ fun SettingsScreen(
     val showLyrics by appSettings.showLyrics.collectAsState()
     val groupByAlbumArtist by appSettings.groupByAlbumArtist.collectAsState()
     val ignoreMediaStoreCovers by appSettings.ignoreMediaStoreCovers.collectAsState()
+    val losslessArtwork by appSettings.losslessArtwork.collectAsState()
     val defaultScreen by appSettings.defaultScreen.collectAsState()
     val showAlphabetBar by appSettings.showAlphabetBar.collectAsState()
     val showScrollToTop by appSettings.showScrollToTop.collectAsState()
@@ -288,6 +289,13 @@ fun SettingsScreen(
                     if (appMode == "LOCAL") {
                         add(SettingItem(Icons.Default.Equalizer, context.getString(R.string.settings_equalizer_title), context.getString(R.string.settings_equalizer_desc), onClick = { onNavigateTo(SettingsRoutes.EQUALIZER) }))
                         add(SettingItem(Icons.Default.AccessTime, context.getString(R.string.sleep_timer), context.getString(R.string.sleep_timer_set_control), onClick = { onNavigateTo(SettingsRoutes.SLEEP_TIMER) }))
+                        add(SettingItem(
+                            Icons.Default.GraphicEq,
+                            "Bit-Perfect Mode",
+                            "Native sample rate, no resampling. Restart required.",
+                            toggleState = bitPerfectMode,
+                            onToggleChange = { appSettings.setBitPerfectMode(it) }
+                        ))
                     }
                 }
             ),
@@ -298,7 +306,21 @@ fun SettingsScreen(
                     SettingItem(Icons.Default.Person, context.getString(R.string.settings_artist_parsing), context.getString(R.string.settings_artist_parsing_desc), onClick = { onNavigateTo(SettingsRoutes.ARTIST_SEPARATORS) }),
                     SettingItem(Icons.Default.Folder, context.getString(R.string.settings_media_scan_title), context.getString(R.string.settings_media_scan_desc), onClick = { onNavigateTo(SettingsRoutes.MEDIA_SCAN) }),
                     SettingItem(Icons.Default.PlaylistAddCheckCircle, context.getString(R.string.settings_playlists_title), context.getString(R.string.settings_playlists_desc), onClick = { onNavigateTo(SettingsRoutes.PLAYLISTS) }),
-                    SettingItem(Icons.Default.Star, "Song Ratings", "Enable or disable song rating system", toggleState = enableRatingSystem, onToggleChange = { appSettings.setEnableRatingSystem(it) })
+                    SettingItem(Icons.Default.Star, "Song Ratings", "Enable or disable song rating system", toggleState = enableRatingSystem, onToggleChange = { appSettings.setEnableRatingSystem(it) }),
+                    SettingItem(
+                        RhythmIcons.Album,
+                        context.getString(R.string.settings_ignore_mediastore_covers),
+                        context.getString(R.string.settings_ignore_mediastore_covers_desc),
+                        toggleState = ignoreMediaStoreCovers,
+                        onToggleChange = { appSettings.setIgnoreMediaStoreCovers(it) }
+                    ),
+                    SettingItem(
+                        Icons.Default.MusicNote,
+                        context.getString(R.string.settings_lossless_artwork),
+                        context.getString(R.string.settings_lossless_artwork_desc),
+                        toggleState = losslessArtwork,
+                        onToggleChange = { appSettings.setLosslessArtwork(it) }
+                    )
                 )
             ) else null,
             // Storage & Data section - only show in LOCAL mode

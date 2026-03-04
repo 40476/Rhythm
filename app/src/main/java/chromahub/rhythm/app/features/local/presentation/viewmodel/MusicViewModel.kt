@@ -1625,7 +1625,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (fileExtension.isNotEmpty() && !chromahub.rhythm.app.util.MediaUtils.isSupportedByJaudiotagger(fileExtension)) {
                     withContext(Dispatchers.Main) {
-                        val msg = ".$fileExtension format is not supported for metadata editing"
+                        val msg = ".$fileExtension files are not supported for metadata editing. Supported: MP3, FLAC, OGG, WAV, M4A, WMA"
                         android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                         onError(msg)
                     }
@@ -4585,7 +4585,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 if (fileExtension.isNotEmpty() && !MediaUtils.isSupportedByJaudiotagger(fileExtension)) {
                     withContext(Dispatchers.Main) {
                         val msg = context.getString(R.string.lyrics_embed_failed) +
-                            " (.$fileExtension format not supported)"
+                            " — .$fileExtension files are not supported. Try MP3, FLAC, OGG, WAV, or M4A."
                         android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                         onError?.invoke(msg)
                     }

@@ -523,8 +523,8 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             description = "Save album art as PNG instead of compressed JPEG",
             keywords = listOf("lossless", "artwork", "png", "quality", "album art", "image", "uncompressed", "high quality"),
             icon = Icons.Default.HighQuality,
-            route = SettingsRoutes.EXPERIMENTAL_FEATURES,
-            parentScreen = "Experimental",
+            route = null,
+            parentScreen = "Library Content",
             settingKey = "losslessArtwork"
         ))
         add(SearchableSettingItem(
@@ -826,8 +826,8 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             description = "Output audio at its native sample rate without resampling (e.g., 44.1kHz for CD, 96kHz for Hi-Res). Requires app restart.",
             keywords = listOf("bit perfect", "bit-perfect", "audio", "sample rate", "resampling", "hi-res", "quality", "lossless", "44.1khz", "48khz", "96khz", "192khz", "native", "dac"),
             icon = Icons.Default.HighQuality,
-            route = SettingsRoutes.EXPERIMENTAL_FEATURES,
-            parentScreen = "Experimental",
+            route = null,
+            parentScreen = "Audio & Playback",
             settingKey = "bitPerfectMode"
         ))
         
@@ -864,8 +864,8 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             description = "Extract album art from audio files directly",
             keywords = listOf("mediastore", "album art", "cover", "extract", "embedded"),
             icon = RhythmIcons.Album,
-            route = SettingsRoutes.EXPERIMENTAL_FEATURES,
-            parentScreen = "Experimental"
+            route = null,
+            parentScreen = "Library Content"
         ))
         add(SearchableSettingItem(
             id = "exp_codec_monitoring",
