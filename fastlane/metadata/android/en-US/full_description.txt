@@ -1,4 +1,4 @@
-<b>🎵 Rhythm — Your Music. Your Way.</b>
+<b>Your Music, Your Rhythm</b>
 
 Open-source Material You music player with audiophile-grade audio, zero tracking, and zero ads.
 
