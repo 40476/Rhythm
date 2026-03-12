@@ -63,7 +63,6 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_REPLAY_GAIN = "replay_gain"
         private const val KEY_BIT_PERFECT_MODE = "bit_perfect_mode"
         private const val KEY_AUDIO_ROUTING_MODE = "audio_routing_mode" // "default", "app", "system"
-        private const val KEY_STORAGE_MODE = "storage_mode" // "json", "room"
         
         // Lyrics Settings
         private const val KEY_SHOW_LYRICS = "show_lyrics"
@@ -292,6 +291,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SAVED_REPEAT_MODE = "saved_repeat_mode"
         private const val KEY_PLAYBACK_SPEED = "playback_speed"
         private const val KEY_PLAYBACK_PITCH = "playback_pitch"
+        private const val KEY_SYNC_SPEED_AND_PITCH = "sync_speed_and_pitch"
         private const val KEY_USE_HOURS_IN_TIME_FORMAT = "use_hours_in_time_format"
         private const val KEY_STOP_PLAYBACK_ON_APP_CLOSE = "stop_playback_on_app_close"
         private const val KEY_QUEUE_PERSISTENCE_ENABLED = "queue_persistence_enabled" // Enable/disable queue persistence
@@ -440,9 +440,6 @@ class AppSettings private constructor(context: Context) {
     
     private val _audioRoutingMode = MutableStateFlow(prefs.getString(KEY_AUDIO_ROUTING_MODE, "default") ?: "default")
     val audioRoutingMode: StateFlow<String> = _audioRoutingMode.asStateFlow()
-    
-    private val _storageMode = MutableStateFlow(prefs.getString(KEY_STORAGE_MODE, "json") ?: "json")
-    val storageMode: StateFlow<String> = _storageMode.asStateFlow()
     
     // Lyrics Settings
     private val _showLyrics = MutableStateFlow(prefs.getBoolean(KEY_SHOW_LYRICS, true))
@@ -738,6 +735,9 @@ class AppSettings private constructor(context: Context) {
 
     private val _playbackPitch = MutableStateFlow(prefs.getFloat(KEY_PLAYBACK_PITCH, 1.0f))
     val playbackPitch: StateFlow<Float> = _playbackPitch.asStateFlow()
+
+    private val _syncSpeedAndPitch = MutableStateFlow(prefs.getBoolean(KEY_SYNC_SPEED_AND_PITCH, false))
+    val syncSpeedAndPitch: StateFlow<Boolean> = _syncSpeedAndPitch.asStateFlow()
     
     // Time Format Settings - Show hours:minutes:seconds for longer tracks (>60 min)
     private val _useHoursInTimeFormat = MutableStateFlow(prefs.getBoolean(KEY_USE_HOURS_IN_TIME_FORMAT, true))
@@ -1262,13 +1262,6 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         Log.d("AppSettings", "Audio routing mode set to: $mode")
     }
     
-    fun setStorageMode(mode: String) {
-        require(mode in listOf("json", "room")) { "Invalid storage mode: $mode" }
-        prefs.edit().putString(KEY_STORAGE_MODE, mode).apply()
-        _storageMode.value = mode
-        Log.d("AppSettings", "Storage mode set to: $mode")
-    }
-    
     fun setAudioNormalization(enable: Boolean) {
         prefs.edit().putBoolean(KEY_AUDIO_NORMALIZATION, enable).apply()
         _audioNormalization.value = enable
@@ -1671,6 +1664,11 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     fun setPlaybackPitch(pitch: Float) {
         prefs.edit().putFloat(KEY_PLAYBACK_PITCH, pitch).apply()
         _playbackPitch.value = pitch
+    }
+
+    fun setSyncSpeedAndPitch(sync: Boolean) {
+        prefs.edit().putBoolean(KEY_SYNC_SPEED_AND_PITCH, sync).apply()
+        _syncSpeedAndPitch.value = sync
     }
     
     // Time Format Settings Methods

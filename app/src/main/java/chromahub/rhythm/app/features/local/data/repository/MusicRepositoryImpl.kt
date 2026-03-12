@@ -132,122 +132,35 @@ class MusicRepository(context: Context) {
     private var cacheTimestamp: Long = 0
     private val CACHE_VALIDITY_MS = 60_000 // 1 minute
     
-    // Disk-based song cache for instant library restore across app restarts
-    private val DISK_CACHE_FILE = "song_library_cache.json"
-    private val gson by lazy { Gson() }
-    
-    // Room database for alternative storage backend
+    // Room database for persistent storage backend
     private val roomDb by lazy { RhythmDatabase.getInstance(context) }
     private val songDao by lazy { roomDb.songDao() }
     
     /**
-     * Lightweight JSON-serializable representation of a Song for disk cache.
-     */
-    private data class SongCacheEntry(
-        val id: String,
-        val title: String,
-        val artist: String,
-        val album: String,
-        val albumId: String,
-        val duration: Long,
-        val uri: String,
-        val artworkUri: String?,
-        val trackNumber: Int,
-        val year: Int,
-        val genre: String?,
-        val dateAdded: Long,
-        val albumArtist: String?,
-        val bitrate: Int?,
-        val sampleRate: Int?,
-        val channels: Int?,
-        val codec: String?
-    )
-    
-    private data class SongCacheWrapper(
-        val version: Int = 1,
-        val timestamp: Long,
-        val songs: List<SongCacheEntry>
-    )
-    
-    private fun saveSongsToDisk(songs: List<Song>) {
-        try {
-            val entries = songs.map { song ->
-                SongCacheEntry(
-                    id = song.id,
-                    title = song.title,
-                    artist = song.artist,
-                    album = song.album,
-                    albumId = song.albumId,
-                    duration = song.duration,
-                    uri = song.uri.toString(),
-                    artworkUri = song.artworkUri?.toString(),
-                    trackNumber = song.trackNumber,
-                    year = song.year,
-                    genre = song.genre,
-                    dateAdded = song.dateAdded,
-                    albumArtist = song.albumArtist,
-                    bitrate = song.bitrate,
-                    sampleRate = song.sampleRate,
-                    channels = song.channels,
-                    codec = song.codec
-                )
-            }
-            val wrapper = SongCacheWrapper(timestamp = System.currentTimeMillis(), songs = entries)
-            val json = gson.toJson(wrapper)
-            val file = File(context.filesDir, DISK_CACHE_FILE)
-            file.writeText(json)
-            Log.d(TAG, "Saved ${songs.size} songs to disk cache (${file.length() / 1024}KB)")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save song cache to disk", e)
-        }
-    }
-    
-    /**
-     * Persists the current in-memory song cache to disk.
-     * Uses JSON or Room depending on the storage mode setting.
+     * Persists the current in-memory song cache to Room database.
      * Call after background processing (metadata extraction, genre detection, artwork extraction)
      * so that results survive app restarts.
      */
     fun persistSongCacheToDisk() {
         cachedSongs?.let { songs ->
-            val storageMode = AppSettings.getInstance(context).storageMode.value
-            if (storageMode == "room") {
-                repositoryScope.launch {
-                    saveSongsToRoom(songs)
-                }
-            } else {
-                saveSongsToDisk(songs)
+            repositoryScope.launch {
+                saveSongsToRoom(songs)
             }
         }
     }
 
     /**
-     * Migrates song data from one storage backend to the other.
-     * Reads from the source, writes to the target, then optionally clears the source.
-     * Call when storageMode changes in settings.
+     * Updates the internal song cache with the given list and persists it to Room.
+     * Call this when the ViewModel modifies (e.g. merges metadata) into the song list.
      */
-    suspend fun migrateStorageMode(newMode: String) = withContext(Dispatchers.IO) {
-        val songs = cachedSongs ?: when (newMode) {
-            "room" -> loadSongsFromDisk()  // Migrating to Room → read from JSON
-            "json" -> loadSongsFromRoom()  // Migrating to JSON → read from Room
-            else -> null
-        }
-        if (songs != null && songs.isNotEmpty()) {
-            when (newMode) {
-                "room" -> {
-                    saveSongsToRoom(songs)
-                    Log.d(TAG, "Migrated ${songs.size} songs from JSON to Room")
-                }
-                "json" -> {
-                    saveSongsToDisk(songs)
-                    Log.d(TAG, "Migrated ${songs.size} songs from Room to JSON")
-                }
-            }
-        } else {
-            Log.w(TAG, "No songs to migrate for mode change to $newMode")
+    fun updateAndPersistSongs(songs: List<Song>) {
+        cachedSongs = songs
+        cacheTimestamp = System.currentTimeMillis()
+        repositoryScope.launch {
+            saveSongsToRoom(songs)
         }
     }
-    
+
     private suspend fun saveSongsToRoom(songs: List<Song>) {
         try {
             val entities = songs.map { song ->
@@ -316,48 +229,6 @@ class MusicRepository(context: Context) {
         }
     }
     
-    private fun loadSongsFromDisk(): List<Song>? {
-        return try {
-            val file = File(context.filesDir, DISK_CACHE_FILE)
-            if (!file.exists()) return null
-            
-            val json = file.readText()
-            val wrapper = gson.fromJson(json, SongCacheWrapper::class.java) ?: return null
-            
-            val songs = wrapper.songs.mapNotNull { entry ->
-                try {
-                    Song(
-                        id = entry.id,
-                        title = entry.title,
-                        artist = entry.artist,
-                        album = entry.album,
-                        albumId = entry.albumId,
-                        duration = entry.duration,
-                        uri = Uri.parse(entry.uri),
-                        artworkUri = entry.artworkUri?.let { Uri.parse(it) },
-                        trackNumber = entry.trackNumber,
-                        year = entry.year,
-                        genre = entry.genre,
-                        dateAdded = entry.dateAdded,
-                        albumArtist = entry.albumArtist,
-                        bitrate = entry.bitrate,
-                        sampleRate = entry.sampleRate,
-                        channels = entry.channels,
-                        codec = entry.codec
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "Skipping corrupted cache entry: ${entry.id}", e)
-                    null
-                }
-            }
-            Log.d(TAG, "Loaded ${songs.size} songs from disk cache (age: ${(System.currentTimeMillis() - wrapper.timestamp) / 1000}s)")
-            songs
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load song cache from disk", e)
-            null
-        }
-    }
-
     // ContentObserver for automatic updates
     private var mediaStoreObserver: ContentObserver? = null
     private var onMediaStoreChangeCallback: (() -> Unit)? = null
@@ -517,18 +388,13 @@ class MusicRepository(context: Context) {
             return@withContext cachedSongs!!
         }
         
-        // On cold start (no in-memory cache), try loading from disk/Room cache
+        // On cold start (no in-memory cache), try loading from Room cache
         if (!forceRefresh && cachedSongs == null) {
-            val storageMode = AppSettings.getInstance(context).storageMode.value
-            val diskCached = if (storageMode == "room") {
-                loadSongsFromRoom()
-            } else {
-                loadSongsFromDisk()
-            }
+            val diskCached = loadSongsFromRoom()
             if (diskCached != null && diskCached.isNotEmpty()) {
                 cachedSongs = diskCached
                 cacheTimestamp = System.currentTimeMillis()
-                Log.d(TAG, "Restored ${diskCached.size} songs from disk cache")
+                Log.d(TAG, "Restored ${diskCached.size} songs from Room cache")
                 return@withContext diskCached
             }
         }
@@ -743,7 +609,7 @@ class MusicRepository(context: Context) {
                 cachedSongs = songs
                 cacheTimestamp = System.currentTimeMillis()
                 
-                // Persist to disk for instant restore on next app launch (respects storageMode)
+                // Persist to Room for instant restore on next app launch
                 persistSongCacheToDisk()
                 
                 // Update scan progress to complete
@@ -4056,17 +3922,11 @@ class MusicRepository(context: Context) {
     }
     
     /**
-     * Clears all song cache data from both JSON disk file and Room database.
+     * Clears all song cache data from Room database.
      * Call this when the user explicitly clears cache from settings.
      */
     fun clearSongCacheData() {
         try {
-            // Clear JSON disk cache
-            val file = File(context.filesDir, DISK_CACHE_FILE)
-            if (file.exists()) {
-                file.delete()
-                Log.d(TAG, "Deleted JSON song cache file")
-            }
             // Clear Room DB
             repositoryScope.launch {
                 try {
@@ -4079,7 +3939,7 @@ class MusicRepository(context: Context) {
             // Clear in-memory song cache
             cachedSongs = null
             cacheTimestamp = 0L
-            Log.d(TAG, "Cleared all song cache data (JSON, Room, in-memory)")
+            Log.d(TAG, "Cleared all song cache data (Room, in-memory)")
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing song cache data", e)
         }
@@ -4089,34 +3949,6 @@ class MusicRepository(context: Context) {
      * Returns the number of songs stored in the Room database.
      */
     suspend fun getRoomSongCount(): Int = songDao.getCount()
-
-    /**
-     * Returns the number of songs stored in the JSON disk cache.
-     */
-    fun getJsonSongCount(): Int {
-        return try {
-            val file = File(context.filesDir, DISK_CACHE_FILE)
-            if (!file.exists()) return 0
-            val json = file.readText()
-            val wrapper = gson.fromJson(json, SongCacheWrapper::class.java)
-            wrapper?.songs?.size ?: 0
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get JSON song count", e)
-            0
-        }
-    }
-
-    /**
-     * Returns the size in bytes of the JSON disk cache file.
-     */
-    fun getJsonFileSize(): Long {
-        return try {
-            val file = File(context.filesDir, DISK_CACHE_FILE)
-            if (file.exists()) file.length() else 0L
-        } catch (e: Exception) {
-            0L
-        }
-    }
     
     /**
      * Clears only the lyrics cache

@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import chromahub.rhythm.app.shared.presentation.components.common.AlbumPlaceholder
 import chromahub.rhythm.app.shared.presentation.components.common.ArtistPlaceholder
@@ -49,7 +50,11 @@ object M3ImageUtils {
         val imageRequest = remember(data) {
             ImageRequest.Builder(context)
                 .data(data)
-                .crossfade(true)
+                .crossfade(150)
+                .memoryCacheKey(data?.toString())
+                .diskCacheKey(data?.toString())
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
                 .build()
         }
         

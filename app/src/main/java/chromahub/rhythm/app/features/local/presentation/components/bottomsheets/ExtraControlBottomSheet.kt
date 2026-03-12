@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -95,6 +96,7 @@ fun ExtraControlBottomSheet(
     onArtist: () -> Unit = {},
     onCast: () -> Unit = {},
     onSongInfo: () -> Unit,
+    onShareFile: () -> Unit = {},
     haptic: HapticFeedback,
     isExtraSmallWidth: Boolean = false,
     isCompactWidth: Boolean = false
@@ -271,6 +273,18 @@ fun ExtraControlBottomSheet(
             onClick = {
                 HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
                 dismissAndDo { onSongInfo() }
+            }
+        ))
+
+        // Share File (always shown)
+        add(ControlAction(
+            icon = Icons.Rounded.Share,
+            label = "Share File",
+            containerColor = secondary,
+            iconColor = onSecondary,
+            onClick = {
+                HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
+                dismissAndDo { onShareFile() }
             }
         ))
     }

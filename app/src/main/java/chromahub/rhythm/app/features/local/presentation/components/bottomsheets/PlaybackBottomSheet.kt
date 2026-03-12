@@ -125,6 +125,7 @@ fun PlaybackBottomSheet(
     // Collect settings
     val playbackSpeed by musicViewModel.playbackSpeed.collectAsState()
     val playbackPitch by musicViewModel.playbackPitch.collectAsState()
+    val syncSpeedAndPitch by appSettings.syncSpeedAndPitch.collectAsState()
     val gaplessPlayback by appSettings.gaplessPlayback.collectAsState()
     val useSystemVolume by appSettings.useSystemVolume.collectAsState()
     val crossfadeEnabled by appSettings.crossfade.collectAsState()
@@ -330,7 +331,10 @@ fun PlaybackBottomSheet(
                             currentPitch = playbackPitch,
                             onPitchChange = { pitch ->
                                 musicViewModel.setPlaybackPitch(pitch)
+                                if (syncSpeedAndPitch) musicViewModel.setPlaybackSpeed(pitch)
                             },
+                            syncEnabled = syncSpeedAndPitch,
+                            onSyncChange = { appSettings.setSyncSpeedAndPitch(it) },
                             haptics = haptics,
                             context = context
                         )
@@ -344,7 +348,10 @@ fun PlaybackBottomSheet(
                             currentSpeed = playbackSpeed,
                             onSpeedChange = { speed ->
                                 musicViewModel.setPlaybackSpeed(speed)
+                                if (syncSpeedAndPitch) musicViewModel.setPlaybackPitch(speed)
                             },
+                            syncEnabled = syncSpeedAndPitch,
+                            onSyncChange = { appSettings.setSyncSpeedAndPitch(it) },
                             haptics = haptics,
                             context = context
                         )
@@ -927,6 +934,8 @@ private fun VolumeControlCard(
 private fun PlaybackSpeedCard(
     currentSpeed: Float,
     onSpeedChange: (Float) -> Unit,
+    syncEnabled: Boolean,
+    onSyncChange: (Boolean) -> Unit,
     haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
     context: Context,
     modifier: Modifier = Modifier
@@ -981,8 +990,43 @@ private fun PlaybackSpeedCard(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Sync toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SyncAlt,
+                        contentDescription = null,
+                        tint = if (syncEnabled) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Sync with Pitch",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (syncEnabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = syncEnabled,
+                    onCheckedChange = {
+                        HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                        onSyncChange(it)
+                    }
+                )
+            }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             
             // Slider with labels
             Column {
@@ -1030,7 +1074,7 @@ private fun PlaybackSpeedCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)) { presetSpeed ->
+                items(listOf(0.5f, 0.75f, 0.8f, 0.9f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)) { presetSpeed ->
                     AssistChip(
                         onClick = {
                             selectedSpeed = presetSpeed
@@ -1239,6 +1283,8 @@ private fun PlaybackQuickSettingsCard(
 private fun PlaybackPitchCard(
     currentPitch: Float,
     onPitchChange: (Float) -> Unit,
+    syncEnabled: Boolean,
+    onSyncChange: (Boolean) -> Unit,
     haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
     context: Context,
     modifier: Modifier = Modifier
@@ -1293,8 +1339,43 @@ private fun PlaybackPitchCard(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Sync toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SyncAlt,
+                        contentDescription = null,
+                        tint = if (syncEnabled) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Sync with Speed",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (syncEnabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = syncEnabled,
+                    onCheckedChange = {
+                        HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                        onSyncChange(it)
+                    }
+                )
+            }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             
             // Slider with labels
             Column {
@@ -1342,7 +1423,7 @@ private fun PlaybackPitchCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)) { presetPitch ->
+                items(listOf(0.5f, 0.75f, 0.8f, 0.9f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)) { presetPitch ->
                     AssistChip(
                         onClick = {
                             selectedPitch = presetPitch

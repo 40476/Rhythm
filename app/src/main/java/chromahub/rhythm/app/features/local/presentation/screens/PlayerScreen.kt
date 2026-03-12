@@ -1026,6 +1026,20 @@ fun PlayerScreen(
             },
             onCast = { showCastBottomSheet = true },
             onSongInfo = { showSongInfoSheet = true },
+            onShareFile = {
+                song?.let { currentSong ->
+                    try {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "audio/*"
+                            putExtra(android.content.Intent.EXTRA_STREAM, currentSong.uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share ${currentSong.title}"))
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Unable to share file", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
             haptic = haptic,
             isExtraSmallWidth = isExtraSmallWidth,
             isCompactWidth = isCompactWidth

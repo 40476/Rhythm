@@ -214,6 +214,13 @@ fun ListeningStatsScreen(
                             }
                         }
                         
+                        // Top Albums
+                        if (stats.topAlbums.isNotEmpty()) {
+                            AnimatedCardEntrance(delay = 550) {
+                                TopAlbumsCard(stats.topAlbums)
+                            }
+                        }
+                        
                         // Genre Mix
                         if (stats.topGenres.isNotEmpty()) {
                             AnimatedCardEntrance(delay = 600) {
@@ -523,24 +530,44 @@ private fun CosmicListeningTimeWidget(totalDurationMs: Long) {
 @Composable
 private fun QuickStatsRow(stats: PlaybackStatsRepository.PlaybackStatsSummary) {
     val context = LocalContext.current
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        QuickStatChip(
-            icon = Icons.Outlined.PlayCircle,
-            value = "${stats.totalPlayCount}",
-            label = context.getString(R.string.stats_total_plays),
-//            emoji = "🎵",
-            modifier = Modifier.weight(1f)
-        )
-        QuickStatChip(
-            icon = Icons.Outlined.MusicNote,
-            value = "${stats.uniqueSongs}",
-            label = context.getString(R.string.stats_unique_tracks),
-//            emoji = "🎶",
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            QuickStatChip(
+                icon = Icons.Outlined.PlayCircle,
+                value = "${stats.totalPlayCount}",
+                label = context.getString(R.string.stats_total_plays),
+                modifier = Modifier.weight(1f)
+            )
+            QuickStatChip(
+                icon = Icons.Outlined.MusicNote,
+                value = "${stats.uniqueSongs}",
+                label = context.getString(R.string.stats_unique_tracks),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            QuickStatChip(
+                icon = Icons.Outlined.People,
+                value = "${stats.uniqueArtists}",
+                label = "Unique Artists",
+                modifier = Modifier.weight(1f)
+            )
+            QuickStatChip(
+                icon = Icons.Outlined.TrendingUp,
+                value = formatDuration(stats.averageDailyDurationMs),
+                label = "Avg / Day",
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -787,6 +814,9 @@ private fun MusicalJourneyCard(stats: PlaybackStatsRepository.PlaybackStatsSumma
         
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             JourneyStatRow(Icons.Outlined.CalendarToday, "Active Days", "${stats.activeDays}")
+            if (stats.longestStreakDays > 1) {
+                JourneyStatRow(Icons.Outlined.LocalFireDepartment, "Longest Streak", "${stats.longestStreakDays} days")
+            }
             JourneyStatRow(Icons.Outlined.Restore, "Sessions", "${stats.totalSessions}")
             JourneyStatRow(Icons.Outlined.Timer, "Avg Session", formatDuration(stats.averageSessionDurationMs))
             if (stats.peakDayOfWeek != null) {
@@ -893,6 +923,38 @@ private fun StarArtistsCard(artists: List<PlaybackStatsRepository.ArtistPlayback
                     subtitle = "${artist.uniqueSongs} tracks",
                     plays = artist.playCount,
                     duration = artist.totalDurationMs,
+                    isTopItem = index == 0
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Top Albums
+ */
+@Composable
+private fun TopAlbumsCard(albums: List<PlaybackStatsRepository.AlbumPlaybackSummary>) {
+    RhythmSectionCard(
+        title = "Top Albums",
+        icon = Icons.Outlined.Album
+    ) {
+        Text(
+            text = "Your favorite album collections!",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            albums.take(5).forEachIndexed { index, album ->
+                RhythmRankItem(
+                    rank = index + 1,
+                    title = album.album,
+                    subtitle = "${album.uniqueSongs} tracks",
+                    plays = album.playCount,
+                    duration = album.totalDurationMs,
                     isTopItem = index == 0
                 )
             }

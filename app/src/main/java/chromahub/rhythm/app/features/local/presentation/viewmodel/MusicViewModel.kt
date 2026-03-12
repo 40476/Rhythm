@@ -502,6 +502,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentQueue = MutableStateFlow(Queue(emptyList(), -1))
     val currentQueue: StateFlow<Queue> = _currentQueue.asStateFlow()
 
+    // Store original queue order before shuffle so we can restore it when unshuffling
+    private var preShuffleQueue: List<Song> = emptyList()
+
     private val _progress = MutableStateFlow(0f)
     val progress: StateFlow<Float> = _progress.asStateFlow()
 
@@ -1128,8 +1131,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         _songs.value = mergedSongs
                     }
-                    // Persist merged data so new songs from MediaStore also get cached
-                    repository.persistSongCacheToDisk()
+                    // Persist merged data (including freshly merged metadata) to Room
+                    repository.updateAndPersistSongs(mergedSongs)
                     Log.d(TAG, "Background MediaStore sync complete: ${mergedSongs.size} songs (merged metadata from ${cachedSongMap.size} cached)")
                 }
             } catch (e: Exception) {
@@ -3256,6 +3259,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         // Set the queue in the view model with the correct starting index
                         _currentQueue.value = Queue(songs, validStartIndex)
                         
+                        // Reset pre-shuffle snapshot since this is a new queue
+                        preShuffleQueue = emptyList()
+                        
                         // Save queue to persistence
                         saveQueueToPersistence()
                         
@@ -3552,7 +3558,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             if (newShuffleMode) {
-                // Enabling shuffle - just toggle the mode
+                // Enabling shuffle - snapshot current queue order first
+                preShuffleQueue = _currentQueue.value.songs.toList()
                 controller.shuffleModeEnabled = true
                 _isShuffleEnabled.value = true
                 
@@ -3565,28 +3572,35 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     Log.d(TAG, "Queue synced after enabling shuffle - queue now has ${_currentQueue.value.songs.size} songs")
                 }
             } else {
-                // Disabling shuffle - restore alphabetical order
+                // Disabling shuffle - restore original (pre-shuffle) queue order
                 val currentSong = _currentSong.value
                 val currentQueue = _currentQueue.value.songs
                 
-                if (currentQueue.isNotEmpty()) {
-                    // Sort the queue alphabetically by title
-                    val sortedSongs = currentQueue.sortedBy { it.title.lowercase() }
-                    
-                    // Find the index of the current song in the sorted list
+                // Use pre-shuffle queue if available, otherwise use current queue as fallback
+                val restoredSongs = if (preShuffleQueue.isNotEmpty()) {
+                    // Keep only songs that are still in the current queue (in case songs were added/removed)
+                    val currentIds = currentQueue.map { it.id }.toSet()
+                    preShuffleQueue.filter { it.id in currentIds }
+                        .takeIf { it.isNotEmpty() } ?: currentQueue
+                } else {
+                    currentQueue
+                }
+                
+                if (restoredSongs.isNotEmpty()) {
+                    // Find the index of the current song in the restored list
                     val currentSongIndex = if (currentSong != null) {
-                        sortedSongs.indexOfFirst { it.id == currentSong.id }.coerceAtLeast(0)
+                        restoredSongs.indexOfFirst { it.id == currentSong.id }.coerceAtLeast(0)
                     } else {
                         0
                     }
                     
-                    Log.d(TAG, "Disabling shuffle - rebuilding queue in alphabetical order (current song at index $currentSongIndex)")
+                    Log.d(TAG, "Disabling shuffle - restoring original queue order (current song at index $currentSongIndex)")
                     
-                    // Rebuild the queue with sorted songs
+                    // Rebuild the queue with restored order
                     viewModelScope.launch {
                         // Build media items on a background thread
                         val mediaItems = withContext(Dispatchers.Default) {
-                            sortedSongs.map { song ->
+                            restoredSongs.map { song ->
                                 MediaItem.Builder()
                                     .setMediaId(song.id)
                                     .setUri(song.uri)
@@ -3615,23 +3629,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                             controller.addMediaItems(mediaItems)
                             controller.prepare()
                             
-                            // Seek to the current song in the sorted queue and resume playback
+                            // Seek to the current song in the restored queue and resume playback
                             controller.seekTo(currentSongIndex, currentPosition)
                             controller.play()
                             
                             // Update the queue state
-                            _currentQueue.value = Queue(sortedSongs, currentSongIndex)
+                            _currentQueue.value = Queue(restoredSongs, currentSongIndex)
                             
                             // Save queue to persistence
                             saveQueueToPersistence()
                             
-                            Log.d(TAG, "Queue rebuilt in alphabetical order - ${sortedSongs.size} songs, playing index $currentSongIndex")
+                            // Clear the pre-shuffle snapshot
+                            preShuffleQueue = emptyList()
+                            
+                            Log.d(TAG, "Queue restored to original order - ${restoredSongs.size} songs, playing index $currentSongIndex")
                         }
                     }
                 } else {
                     // Empty queue, just toggle shuffle mode
                     controller.shuffleModeEnabled = false
                     _isShuffleEnabled.value = false
+                    preShuffleQueue = emptyList()
                 }
             }
         }

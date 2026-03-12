@@ -190,7 +190,6 @@ fun SettingsScreen(
     val updatesEnabled by appSettings.updatesEnabled.collectAsState()
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsState()
     val useSystemVolume by appSettings.useSystemVolume.collectAsState()
-    val showLyrics by appSettings.showLyrics.collectAsState()
     val audioNormalization by appSettings.audioNormalization.collectAsState()
     val replayGain by appSettings.replayGain.collectAsState()
     val defaultScreen by appSettings.defaultScreen.collectAsState()
@@ -199,7 +198,6 @@ fun SettingsScreen(
     val appMode by appSettings.appMode.collectAsState()
     
     var showDefaultScreenDialog by remember { mutableStateOf(false) }
-    var showLyricsSourceDialog by remember { mutableStateOf(false) }
     var showLanguageSwitcher by remember { mutableStateOf(false) }
     
     // Search state
@@ -296,11 +294,6 @@ fun SettingsScreen(
                         toggleState = useSystemVolume,
                         onToggleChange = { appSettings.setUseSystemVolume(it) }
                     ))
-                    add(SettingItem(Icons.Default.Lyrics, context.getString(R.string.settings_show_lyrics), context.getString(R.string.settings_show_lyrics_desc), toggleState = showLyrics, onToggleChange = { appSettings.setShowLyrics(it) }))
-                    add(SettingItem(Icons.Default.Lyrics, context.getString(R.string.lyrics_source_priority), context.getString(R.string.playback_lyrics_priority_desc), onClick = { 
-                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
-                        showLyricsSourceDialog = true 
-                    }))
                     //add(SettingItem(Icons.Default.GraphicEq, context.getString(R.string.audio_normalization), context.getString(R.string.audio_normalization_desc), toggleState = audioNormalization, onToggleChange = { appSettings.setAudioNormalization(it) }))
                     //add(SettingItem(Icons.Default.GraphicEq, context.getString(R.string.replay_gain), context.getString(R.string.replay_gain_desc), toggleState = replayGain, onToggleChange = { appSettings.setReplayGain(it) }))
                     if (appMode == "LOCAL") {
@@ -684,16 +677,6 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-        }
-        
-        // Lyrics source priority dialog
-        if (showLyricsSourceDialog) {
-            LyricsSourceDialog(
-                onDismiss = { showLyricsSourceDialog = false },
-                appSettings = appSettings,
-                context = context,
-                haptic = hapticFeedback
-            )
         }
         
         // Language switcher dialog

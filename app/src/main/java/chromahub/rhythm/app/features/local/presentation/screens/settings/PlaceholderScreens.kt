@@ -6217,7 +6217,6 @@ fun LibrarySettingsScreen(onBackClick: () -> Unit) {
     val appSettings = AppSettings.getInstance(context)
 
     val enableRatingSystem by appSettings.enableRatingSystem.collectAsState()
-    val groupByAlbumArtist by appSettings.groupByAlbumArtist.collectAsState()
     val ignoreMediaStoreCovers by appSettings.ignoreMediaStoreCovers.collectAsState()
     val losslessArtwork by appSettings.losslessArtwork.collectAsState()
     val albumBottomSheetGradientBlur by appSettings.albumBottomSheetGradientBlur.collectAsState()
@@ -6237,13 +6236,6 @@ fun LibrarySettingsScreen(onBackClick: () -> Unit) {
                         context.getString(R.string.settings_song_ratings_desc),
                         toggleState = enableRatingSystem,
                         onToggleChange = { appSettings.setEnableRatingSystem(it) }
-                    ),
-                    SettingItem(
-                        Icons.Default.Person,
-                        context.getString(R.string.settings_group_by_album_artist),
-                        context.getString(R.string.settings_group_by_album_artist_desc),
-                        toggleState = groupByAlbumArtist,
-                        onToggleChange = { appSettings.setGroupByAlbumArtist(it) }
                     )
                 )
             ),
@@ -6325,7 +6317,6 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
     // Collect states
     val maxCacheSize by appSettings.maxCacheSize.collectAsState()
     val clearCacheOnExit by appSettings.clearCacheOnExit.collectAsState()
-    val storageMode by appSettings.storageMode.collectAsState()
 
     // Local states
     var currentCacheSize by remember { mutableStateOf(0L) }
@@ -6336,8 +6327,6 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
     var cacheDetails by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var isRebuildingRoom by remember { mutableStateOf(false) }
     var roomSongCount by remember { mutableStateOf(-1) }
-    var jsonCacheSize by remember { mutableStateOf(-1L) }
-    var jsonSongCount by remember { mutableStateOf(-1) }
 
     // Calculate cache size when the screen opens
     LaunchedEffect(Unit) {
@@ -6353,11 +6342,9 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
     }
 
     // Calculate storage backend stats
-    LaunchedEffect(storageMode) {
+    LaunchedEffect(Unit) {
         try {
             val repo = musicViewModel.getMusicRepository()
-            jsonSongCount = repo.getJsonSongCount()
-            jsonCacheSize = repo.getJsonFileSize()
             roomSongCount = try {
                 repo.getRoomSongCount()
             } catch (_: Exception) { -1 }
@@ -6662,93 +6649,6 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {
-                        // Storage mode selection with ExpressiveButtonGroup
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    modifier = Modifier.size(40.dp),
-                                    shape = RoundedCornerShape(34.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    tonalElevation = 0.dp
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.fillMaxSize()
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Storage,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(24.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                Column {
-                                    Text(
-                                        text = context.getString(R.string.settings_cache_backend),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = context.getString(R.string.settings_cache_backend_desc),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            ExpressiveButtonGroup(
-                                items = listOf(
-                                    context.getString(R.string.settings_storage_json),
-                                    context.getString(R.string.settings_storage_room)
-                                ),
-                                selectedIndex = if (storageMode == "json") 0 else 1,
-                                onItemClick = { index ->
-                                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                    val newMode = if (index == 0) "json" else "room"
-                                    if (storageMode != newMode) {
-                                        appSettings.setStorageMode(newMode)
-                                        scope.launch {
-                                            musicViewModel.getMusicRepository().migrateStorageMode(newMode)
-                                            jsonSongCount = musicViewModel.getMusicRepository().getJsonSongCount()
-                                            jsonCacheSize = musicViewModel.getMusicRepository().getJsonFileSize()
-                                            roomSongCount = try {
-                                                musicViewModel.getMusicRepository().getRoomSongCount()
-                                            } catch (_: Exception) { -1 }
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                        )
-
-                        // JSON stats
-                        SettingRow(
-                            icon = Icons.Filled.Description,
-                            title = context.getString(R.string.settings_storage_json_stats),
-                            description = if (jsonSongCount >= 0)
-                                context.getString(R.string.settings_storage_song_count, jsonSongCount) + " · " +
-                                context.getString(R.string.settings_storage_file_size,
-                                    chromahub.rhythm.app.util.CacheManager.formatBytes(jsonCacheSize))
-                            else context.getString(R.string.settings_storage_not_available)
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                        )
-
                         // Room stats
                         SettingRow(
                             icon = Icons.Filled.TableChart,
@@ -8566,6 +8466,7 @@ fun PlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
 
     // State variables
     val showLyrics by appSettings.showLyrics.collectAsState()
+    val lyricsSourcePreference by appSettings.lyricsSourcePreference.collectAsState()
     val playerShowGradientOverlay by appSettings.playerShowGradientOverlay.collectAsState()
     val playerLyricsTransition by appSettings.playerLyricsTransition.collectAsState()
     val playerLyricsTextSize by appSettings.playerLyricsTextSize.collectAsState()
@@ -8582,10 +8483,15 @@ fun PlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
     val playerProgressThumbStyle by appSettings.playerProgressThumbStyle.collectAsState()
 
     var showChipOrderBottomSheet by remember { mutableStateOf(false) }
+    var showLyricsSourceDialog by remember { mutableStateOf(false) }
     var showTextAlignmentSheet by remember { mutableStateOf(false) }
     var showCornerRadiusSheet by remember { mutableStateOf(false) }
     var showPlayerProgressStyleSheet by remember { mutableStateOf(false) }
     var showPlayerThumbStyleSheet by remember { mutableStateOf(false) }
+
+    if (showLyricsSourceDialog) {
+        LyricsSourceDialog(onDismiss = { showLyricsSourceDialog = false }, appSettings = appSettings, context = context, haptic = haptics)
+    }
 
     CollapsibleHeaderScreen(
         title = context.getString(R.string.settings_player),
@@ -8697,6 +8603,20 @@ fun PlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
                             description = context.getString(R.string.settings_show_lyrics_desc),
                             toggleState = showLyrics,
                             onToggleChange = { appSettings.setShowLyrics(it) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                        )
+                        // Lyrics Source Priority
+                        SettingRow(
+                            icon = Icons.Default.Lyrics,
+                            title = context.getString(R.string.lyrics_source_priority),
+                            description = context.getString(R.string.playback_lyrics_priority_desc),
+                            onClick = {
+                                HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                showLyricsSourceDialog = true
+                            }
                         )
                         // All lyrics settings visible when lyrics are enabled
                         AnimatedVisibility(
