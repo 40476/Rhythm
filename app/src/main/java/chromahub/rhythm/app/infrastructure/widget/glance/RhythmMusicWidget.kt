@@ -109,11 +109,29 @@ class RhythmMusicWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
     
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val appSettings = chromahub.rhythm.app.shared.data.model.AppSettings.getInstance(context)
+        val appSettings = try {
+            chromahub.rhythm.app.shared.data.model.AppSettings.getInstance(context)
+        } catch (e: Exception) {
+            null
+        }
         
         provideContent {
             val prefs = currentState<Preferences>()
-            val widgetData = getWidgetData(prefs, appSettings)
+            val widgetData = try {
+                getWidgetData(prefs, appSettings)
+            } catch (e: Exception) {
+                android.util.Log.e("RhythmMusicWidget", "Widget data error, using fallback", e)
+                WidgetData(
+                    songTitle = "Rhythm",
+                    artistName = "",
+                    albumName = "",
+                    isPlaying = false,
+                    artworkUri = null,
+                    hasPrevious = false,
+                    hasNext = false,
+                    isFavorite = false
+                )
+            }
             val currentSize = LocalSize.current
             GlanceTheme {
                 WidgetUi(widgetData, currentSize)
@@ -1169,11 +1187,15 @@ class RhythmMusicWidget : GlanceAppWidget() {
         cornerRadius: Dp = 20.dp
     ) {
         val sizingModifier = if (size != null) modifier.size(size) else modifier
-        val placeholderSize = (size ?: 72.dp).times(0.6f).coerceIn(28.dp, 96.dp)
+        val placeholderSizeDp = if (size != null) {
+            val raw = size.value * 0.6f
+            raw.coerceIn(28f, 96f).dp
+        } else {
+            43.dp // 72 * 0.6 = 43.2
+        }
         
         Box(modifier = sizingModifier) {
             if (artworkUri != null) {
-                // Glance Image handles loading errors internally
                 Image(
                     provider = AppWidgetImageProvider(artworkUri),
                     contentDescription = "Album Art",
@@ -1181,7 +1203,7 @@ class RhythmMusicWidget : GlanceAppWidget() {
                     contentScale = ContentScale.Crop
                 )
             } else {
-                AlbumArtPlaceholder(cornerRadius, placeholderSize)
+                AlbumArtPlaceholder(cornerRadius, placeholderSizeDp)
             }
         }
     }
@@ -1304,7 +1326,7 @@ class RhythmMusicWidget : GlanceAppWidget() {
         }
     }
     
-    private fun getWidgetData(prefs: Preferences, appSettings: chromahub.rhythm.app.shared.data.model.AppSettings): WidgetData {
+    private fun getWidgetData(prefs: Preferences, appSettings: chromahub.rhythm.app.shared.data.model.AppSettings?): WidgetData {
         return try {
             WidgetData(
                 songTitle = prefs[stringPreferencesKey(KEY_SONG_TITLE)] ?: "Rhythm",
@@ -1321,11 +1343,11 @@ class RhythmMusicWidget : GlanceAppWidget() {
                 hasPrevious = prefs[booleanPreferencesKey(KEY_HAS_PREVIOUS)] ?: false,
                 hasNext = prefs[booleanPreferencesKey(KEY_HAS_NEXT)] ?: false,
                 isFavorite = prefs[booleanPreferencesKey(KEY_IS_FAVORITE)] ?: false,
-                showAlbumArt = try { appSettings.widgetShowAlbumArt.value } catch (e: Exception) { true },
-                showArtist = try { appSettings.widgetShowArtist.value } catch (e: Exception) { true },
-                showAlbum = try { appSettings.widgetShowAlbum.value } catch (e: Exception) { true },
-                showFavoriteButton = try { appSettings.widgetShowFavoriteButton.value } catch (e: Exception) { true },
-                cornerRadius = try { appSettings.widgetCornerRadius.value } catch (e: Exception) { 28 }
+                showAlbumArt = appSettings?.widgetShowAlbumArt?.value ?: true,
+                showArtist = appSettings?.widgetShowArtist?.value ?: true,
+                showAlbum = appSettings?.widgetShowAlbum?.value ?: true,
+                showFavoriteButton = appSettings?.widgetShowFavoriteButton?.value ?: true,
+                cornerRadius = appSettings?.widgetCornerRadius?.value ?: 28
             )
         } catch (e: Exception) {
             android.util.Log.e("RhythmMusicWidget", "Error getting widget data", e)

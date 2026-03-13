@@ -3921,7 +3921,7 @@ fun PlaybackSpeedDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Sync toggle
+                // Sync toggle — expressive design matching settings
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -3929,23 +3929,36 @@ fun PlaybackSpeedDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.SyncAlt,
-                            contentDescription = null,
-                            tint = if (syncEnabled) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = RoundedCornerShape(34.dp),
+                            color = if (syncEnabled) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SyncAlt,
+                                    contentDescription = null,
+                                    tint = if (syncEnabled) MaterialTheme.colorScheme.onPrimaryContainer
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = context.getString(R.string.sync_with_pitch),
                             style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (syncEnabled) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    chromahub.rhythm.app.features.local.presentation.screens.settings.TunerAnimatedSwitch(
                         checked = syncEnabled,
                         onCheckedChange = {
                             HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
@@ -4137,7 +4150,7 @@ fun PlaybackPitchDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Sync toggle
+                // Sync toggle — expressive design matching settings
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -4145,23 +4158,36 @@ fun PlaybackPitchDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.SyncAlt,
-                            contentDescription = null,
-                            tint = if (syncEnabled) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = RoundedCornerShape(34.dp),
+                            color = if (syncEnabled) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SyncAlt,
+                                    contentDescription = null,
+                                    tint = if (syncEnabled) MaterialTheme.colorScheme.onPrimaryContainer
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = context.getString(R.string.sync_with_speed),
                             style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (syncEnabled) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    chromahub.rhythm.app.features.local.presentation.screens.settings.TunerAnimatedSwitch(
                         checked = syncEnabled,
                         onCheckedChange = {
                             HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)

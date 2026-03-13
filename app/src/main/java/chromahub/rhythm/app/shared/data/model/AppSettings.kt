@@ -63,6 +63,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_REPLAY_GAIN = "replay_gain"
         private const val KEY_BIT_PERFECT_MODE = "bit_perfect_mode"
         private const val KEY_AUDIO_ROUTING_MODE = "audio_routing_mode" // "default", "app", "system"
+        private const val KEY_RESUME_ON_DEVICE_RECONNECT = "resume_on_device_reconnect"
         
         // Lyrics Settings
         private const val KEY_SHOW_LYRICS = "show_lyrics"
@@ -422,6 +423,9 @@ class AppSettings private constructor(context: Context) {
     
     private val _gaplessPlayback = MutableStateFlow(prefs.getBoolean(KEY_GAPLESS_PLAYBACK, true))
     val gaplessPlayback: StateFlow<Boolean> = _gaplessPlayback.asStateFlow()
+    
+    private val _resumeOnDeviceReconnect = MutableStateFlow(prefs.getBoolean(KEY_RESUME_ON_DEVICE_RECONNECT, false))
+    val resumeOnDeviceReconnect: StateFlow<Boolean> = _resumeOnDeviceReconnect.asStateFlow()
     
     private val _crossfade = MutableStateFlow(prefs.getBoolean(KEY_CROSSFADE, true))
     val crossfade: StateFlow<Boolean> = _crossfade.asStateFlow()
@@ -1233,6 +1237,11 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     fun setGaplessPlayback(enable: Boolean) {
         prefs.edit().putBoolean(KEY_GAPLESS_PLAYBACK, enable).apply()
         _gaplessPlayback.value = enable
+    }
+    
+    fun setResumeOnDeviceReconnect(enable: Boolean) {
+        prefs.edit().putBoolean(KEY_RESUME_ON_DEVICE_RECONNECT, enable).apply()
+        _resumeOnDeviceReconnect.value = enable
     }
     
     fun setCrossfade(enable: Boolean) {

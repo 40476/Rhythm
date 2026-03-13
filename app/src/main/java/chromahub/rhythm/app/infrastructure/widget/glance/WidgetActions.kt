@@ -18,14 +18,18 @@ class PlayPauseAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        val intent = Intent(context, MediaPlaybackService::class.java).apply {
-            action = MediaPlaybackService.ACTION_PLAY_PAUSE
+        try {
+            val intent = Intent(context, MediaPlaybackService::class.java).apply {
+                action = MediaPlaybackService.ACTION_PLAY_PAUSE
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("WidgetAction", "Cannot start service for play/pause", e)
         }
-        context.startService(intent)
         
         // Trigger immediate widget update after short delay for state change
         delay(100)
-        RhythmMusicWidget().updateAll(context)
+        try { RhythmMusicWidget().updateAll(context) } catch (_: Exception) {}
     }
 }
 
@@ -38,14 +42,18 @@ class SkipNextAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        val intent = Intent(context, MediaPlaybackService::class.java).apply {
-            action = MediaPlaybackService.ACTION_SKIP_NEXT
+        try {
+            val intent = Intent(context, MediaPlaybackService::class.java).apply {
+                action = MediaPlaybackService.ACTION_SKIP_NEXT
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("WidgetAction", "Cannot start service for skip next", e)
         }
-        context.startService(intent)
         
         // Trigger immediate widget update after short delay for state change
         delay(100)
-        RhythmMusicWidget().updateAll(context)
+        try { RhythmMusicWidget().updateAll(context) } catch (_: Exception) {}
     }
 }
 
@@ -58,14 +66,18 @@ class SkipPreviousAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        val intent = Intent(context, MediaPlaybackService::class.java).apply {
-            action = MediaPlaybackService.ACTION_SKIP_PREVIOUS
+        try {
+            val intent = Intent(context, MediaPlaybackService::class.java).apply {
+                action = MediaPlaybackService.ACTION_SKIP_PREVIOUS
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("WidgetAction", "Cannot start service for skip previous", e)
         }
-        context.startService(intent)
         
         // Trigger immediate widget update after short delay for state change
         delay(100)
-        RhythmMusicWidget().updateAll(context)
+        try { RhythmMusicWidget().updateAll(context) } catch (_: Exception) {}
     }
 }
 
@@ -78,14 +90,18 @@ class ToggleFavoriteAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        // Send action to MediaPlaybackService to toggle favorite
-        val intent = Intent(context, MediaPlaybackService::class.java).apply {
-            action = MediaPlaybackService.ACTION_TOGGLE_FAVORITE
+        try {
+            // Send action to MediaPlaybackService to toggle favorite
+            val intent = Intent(context, MediaPlaybackService::class.java).apply {
+                action = MediaPlaybackService.ACTION_TOGGLE_FAVORITE
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("WidgetAction", "Cannot start service for toggle favorite", e)
         }
-        context.startService(intent)
         
         // Trigger immediate widget update after short delay for state change
         delay(200)
-        RhythmMusicWidget().updateAll(context)
+        try { RhythmMusicWidget().updateAll(context) } catch (_: Exception) {}
     }
 }

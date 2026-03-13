@@ -755,10 +755,44 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         
+        // Reload artists when groupByAlbumArtist setting changes
+        // The _artists list must be rebuilt from the repository since
+        // track-artist vs album-artist grouping produces different lists
+        viewModelScope.launch {
+            var previousValue = appSettings.groupByAlbumArtist.value
+            appSettings.groupByAlbumArtist.collect { newValue ->
+                if (newValue != previousValue && _isInitialized.value) {
+                    previousValue = newValue
+                    Log.d(TAG, "groupByAlbumArtist changed to $newValue, reloading artists")
+                    try {
+                        val freshArtists = withContext(Dispatchers.IO) {
+                            repository.loadArtists()
+                        }
+                        _artists.value = freshArtists
+                        Log.d(TAG, "Reloaded ${freshArtists.size} artists after groupByAlbumArtist toggle")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error reloading artists after groupByAlbumArtist toggle", e)
+                    }
+                }
+            }
+        }
+        
         // Register broadcast receiver for favorite changes from service and widget
         val filter = IntentFilter().apply {
             addAction("chromahub.rhythm.app.action.FAVORITE_CHANGED")
             addAction("chromahub.rhythm.app.action.WIDGET_TOGGLE_FAVORITE")
+        }
+        
+        // Resume playback on audio device reconnection (e.g., Bluetooth headphones reconnected)
+        viewModelScope.launch {
+            audioDeviceManager.deviceReconnected.collect { deviceName ->
+                if (appSettings.resumeOnDeviceReconnect.value && !_isPlaying.value && _currentSong.value != null) {
+                    Log.d(TAG, "Audio device reconnected ($deviceName), resuming playback")
+                    mediaController?.play()
+                    _isPlaying.value = true
+                    startProgressUpdates()
+                }
+            }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getApplication<Application>().registerReceiver(favoriteChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -1969,6 +2003,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             val context = getApplication<Application>().applicationContext
             var successCount = 0
             var failCount = 0
+            // Collect updated songs for bulk in-memory update at the end
+            val updatedSongs = mutableMapOf<String, Song>()
 
             songs.forEachIndexed { index, song ->
                 try {
@@ -1977,25 +2013,60 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val newGenre = genre ?: (song.genre ?: "")
                     val newYear = year ?: song.year
 
-                    val success = try {
-                        withContext(Dispatchers.IO) {
-                            chromahub.rhythm.app.util.MediaUtils.updateSongMetadata(
-                                context = context,
-                                song = song,
-                                newTitle = song.title,
-                                newArtist = newArtist,
-                                newAlbum = newAlbum,
-                                newGenre = newGenre,
-                                newYear = newYear,
-                                newTrackNumber = song.trackNumber
-                            )
+                    // Check if file format is supported before attempting write
+                    val fileExtension = try {
+                        val projection = arrayOf(android.provider.MediaStore.Audio.Media.DATA)
+                        context.contentResolver.query(song.uri, projection, null, null, null)
+                            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                            ?.substringAfterLast('.', "")
+                            ?.lowercase()
+                            ?: song.uri.lastPathSegment?.substringAfterLast('.', "") ?: ""
+                    } catch (_: Exception) { "" }
+
+                    val formatSupported = fileExtension.isEmpty() ||
+                        chromahub.rhythm.app.util.MediaUtils.isSupportedByJaudiotagger(fileExtension)
+
+                    val success = if (formatSupported) {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                chromahub.rhythm.app.util.MediaUtils.updateSongMetadata(
+                                    context = context,
+                                    song = song,
+                                    newTitle = song.title,
+                                    newArtist = newArtist,
+                                    newAlbum = newAlbum,
+                                    newGenre = newGenre,
+                                    newYear = newYear,
+                                    newTrackNumber = song.trackNumber
+                                )
+                            }
+                        } catch (e: chromahub.rhythm.app.util.RecoverableSecurityExceptionWrapper) {
+                            // On Android 11+, file write requires per-file user permission (scoped storage).
+                            // MediaStore was already updated in updateSongMetadata before the exception.
+                            // Count as partial success — in-memory and MediaStore updated, file tags not.
+                            Log.w(TAG, "Batch edit: scoped storage restriction for ${song.title}, MediaStore updated only")
+                            true
                         }
-                    } catch (e: chromahub.rhythm.app.util.RecoverableSecurityExceptionWrapper) {
-                        // On Android 11+, file write requires per-file user permission (scoped storage).
-                        // MediaStore was already updated in updateSongMetadata before the exception.
-                        // Count as success so batch operations don't always report failure.
-                        Log.w(TAG, "Batch edit: scoped storage restriction for ${song.title}, MediaStore updated only")
-                        true
+                    } else {
+                        // Unsupported format — update MediaStore only via ContentValues
+                        try {
+                            withContext(Dispatchers.IO) {
+                                val values = android.content.ContentValues().apply {
+                                    put(android.provider.MediaStore.Audio.Media.ARTIST, newArtist)
+                                    put(android.provider.MediaStore.Audio.Media.ALBUM, newAlbum)
+                                    if (newGenre.isNotBlank() && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                        put(android.provider.MediaStore.Audio.Media.GENRE, newGenre)
+                                    }
+                                    if (newYear > 0) {
+                                        put(android.provider.MediaStore.Audio.Media.YEAR, newYear)
+                                    }
+                                }
+                                context.contentResolver.update(song.uri, values, null, null) > 0
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Batch edit: MediaStore-only update failed for ${song.title}", e)
+                            false
+                        }
                     }
 
                     val updatedSong = song.copy(
@@ -2004,6 +2075,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         genre = newGenre,
                         year = newYear
                     )
+                    // Track for bulk update
+                    updatedSongs[song.id] = updatedSong
+                    // Also update currently playing song if it matches
                     updateCurrentSongMetadata(updatedSong)
 
                     if (newGenre.isNotBlank()) {
@@ -2020,6 +2094,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 withContext(Dispatchers.Main) {
                     onProgress(index + 1, songs.size)
+                }
+            }
+
+            // Bulk update the in-memory song list so UI reflects changes immediately
+            if (updatedSongs.isNotEmpty()) {
+                _songs.value = _songs.value.map { song ->
+                    updatedSongs[song.id] ?: song
                 }
             }
 

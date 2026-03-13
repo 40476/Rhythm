@@ -12,6 +12,9 @@ import chromahub.rhythm.app.shared.data.model.PlaybackLocation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import android.Manifest
 import android.content.pm.PackageManager
 import android.bluetooth.BluetoothClass
@@ -39,6 +42,11 @@ class AudioDeviceManager(private val context: Context) {
     
     private val _currentDevice = MutableStateFlow<PlaybackLocation?>(null)
     val currentDevice: StateFlow<PlaybackLocation?> = _currentDevice.asStateFlow()
+    
+    // Device reconnect detection
+    private val _deviceReconnected = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val deviceReconnected: kotlinx.coroutines.flow.SharedFlow<String> = _deviceReconnected.asSharedFlow()
+    private val recentlyDisconnectedDeviceTypes = mutableSetOf<Int>() // AudioDeviceInfo type IDs
     
     // Store the audio focus request for later abandonment
     private var focusRequest: android.media.AudioFocusRequest? = null
@@ -79,9 +87,34 @@ class AudioDeviceManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             audioManager.registerAudioDeviceCallback(object : android.media.AudioDeviceCallback() {
                 override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+                    addedDevices?.let { devices ->
+                        for (device in devices) {
+                            if (device.isSink && recentlyDisconnectedDeviceTypes.remove(device.type)) {
+                                val deviceName = when (device.type) {
+                                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth"
+                                    AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired"
+                                    else -> "Audio"
+                                }
+                                Log.d(TAG, "Device reconnected: $deviceName (type=${device.type})")
+                                _deviceReconnected.tryEmit(deviceName)
+                            }
+                        }
+                    }
                     refreshDevices()
                 }
                 override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                    removedDevices?.let { devices ->
+                        for (device in devices) {
+                            if (device.isSink && device.type != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                                recentlyDisconnectedDeviceTypes.add(device.type)
+                                Log.d(TAG, "Device disconnected: type=${device.type}")
+                            }
+                        }
+                    }
+                    // Clear stale entries after 5 minutes
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        recentlyDisconnectedDeviceTypes.clear()
+                    }, 5 * 60 * 1000L)
                     refreshDevices()
                 }
             }, android.os.Handler(android.os.Looper.getMainLooper()))
