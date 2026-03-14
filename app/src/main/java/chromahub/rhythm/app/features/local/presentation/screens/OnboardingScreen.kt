@@ -294,7 +294,7 @@ fun OnboardingScreen(
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = when {
-                    currentStep != OnboardingStep.PERMISSIONS -> true
+                    currentStep != OnboardingStep.PERMISSIONS && currentStep != OnboardingStep.GESTURES -> true
                     permissionScreenState == PermissionScreenState.PermissionsGranted -> true
                     else -> true // Allow scrolling to let user review info before granting
                 },
@@ -7701,6 +7701,7 @@ fun EnhancedGesturesContent(
     val gesturePlayerSwipeDismiss by appSettings.gesturePlayerSwipeDismiss.collectAsState()
     val gesturePlayerSwipeTracks by appSettings.gesturePlayerSwipeTracks.collectAsState()
     val gestureArtworkDoubleTap by appSettings.gestureArtworkDoubleTap.collectAsState()
+    val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsState()
 
     if (isTablet) {
         Row(
@@ -7770,10 +7771,12 @@ fun EnhancedGesturesContent(
                     gesturePlayerSwipeDismiss = gesturePlayerSwipeDismiss,
                     gesturePlayerSwipeTracks = gesturePlayerSwipeTracks,
                     gestureArtworkDoubleTap = gestureArtworkDoubleTap,
+                    hapticFeedbackEnabled = hapticFeedbackEnabled,
                     onMiniPlayerSwipeChange = { appSettings.setMiniPlayerSwipeGestures(it) },
                     onSwipeDismissChange = { appSettings.setGesturePlayerSwipeDismiss(it) },
                     onSwipeTracksChange = { appSettings.setGesturePlayerSwipeTracks(it) },
-                    onDoubleTapChange = { appSettings.setGestureArtworkDoubleTap(it) }
+                    onDoubleTapChange = { appSettings.setGestureArtworkDoubleTap(it) },
+                    onHapticFeedbackChange = { appSettings.setHapticFeedbackEnabled(it) }
                 )
             }
         }
@@ -7823,10 +7826,12 @@ fun EnhancedGesturesContent(
                 gesturePlayerSwipeDismiss = gesturePlayerSwipeDismiss,
                 gesturePlayerSwipeTracks = gesturePlayerSwipeTracks,
                 gestureArtworkDoubleTap = gestureArtworkDoubleTap,
+                hapticFeedbackEnabled = hapticFeedbackEnabled,
                 onMiniPlayerSwipeChange = { appSettings.setMiniPlayerSwipeGestures(it) },
                 onSwipeDismissChange = { appSettings.setGesturePlayerSwipeDismiss(it) },
                 onSwipeTracksChange = { appSettings.setGesturePlayerSwipeTracks(it) },
-                onDoubleTapChange = { appSettings.setGestureArtworkDoubleTap(it) }
+                onDoubleTapChange = { appSettings.setGestureArtworkDoubleTap(it) },
+                onHapticFeedbackChange = { appSettings.setHapticFeedbackEnabled(it) }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -7844,15 +7849,44 @@ private fun GestureSettingsCards(
     gesturePlayerSwipeDismiss: Boolean,
     gesturePlayerSwipeTracks: Boolean,
     gestureArtworkDoubleTap: Boolean,
+    hapticFeedbackEnabled: Boolean,
     onMiniPlayerSwipeChange: (Boolean) -> Unit,
     onSwipeDismissChange: (Boolean) -> Unit,
     onSwipeTracksChange: (Boolean) -> Unit,
-    onDoubleTapChange: (Boolean) -> Unit
+    onDoubleTapChange: (Boolean) -> Unit,
+    onHapticFeedbackChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // General Interaction Settings
+        Text(
+            text = "Interaction",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+        )
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        ) {
+            OnboardingSettingRow(
+                icon = Icons.Filled.TouchApp,
+                title = "Haptic Feedback",
+                description = "Enable vibration feedback for interactions",
+                isEnabled = hapticFeedbackEnabled,
+                onToggle = { 
+                    HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                    onHapticFeedbackChange(it) 
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Mini Player Section
         Text(
             text = context.getString(R.string.onboarding_gestures_miniplayer),
