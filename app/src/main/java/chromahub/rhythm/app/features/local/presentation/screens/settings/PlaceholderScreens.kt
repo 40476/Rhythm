@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.border
@@ -504,6 +505,8 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
 
     var showPlaylistBehaviorDialog by remember { mutableStateOf(false) }
     var showQueueDialogSettingDialog by remember { mutableStateOf(false) }
+    var showRestartDialog by remember { mutableStateOf(false) }
+    var restartDialogMessage by remember { mutableStateOf("") }
 
     CollapsibleHeaderScreen(
         title = context.getString(R.string.settings_queue_playback),
@@ -603,7 +606,11 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                         context.getString(R.string.settings_bit_perfect_mode),
                         if (audioRoutingMode == "app") context.getString(R.string.settings_bit_perfect_mode_desc_dac) else context.getString(R.string.settings_bit_perfect_mode_desc_native),
                         toggleState = bitPerfectMode,
-                        onToggleChange = { appSettings.setBitPerfectMode(it) }
+                        onToggleChange = { 
+                            appSettings.setBitPerfectMode(it)
+                            showRestartDialog = true
+                            restartDialogMessage = "Bit-perfect mode changed. Restart the app to apply the new audio settings."
+                        }
                     )
                 )
             ),
@@ -652,57 +659,77 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                             // If this is a crossfade setting with enabled state and data (duration), show the slider
                             if (item.data != null && item.data is Float && item.toggleState == true) {
                                 val duration = item.data as Float
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 20.dp),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                )
-                                // Crossfade duration slider integrated within the same card
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                                // Remove divider between crossfade and duration slider
+                                // Master animation for crossfade duration slider
+                                AnimatedVisibility(
+                                    visible = crossfadeEnabled,
+                                    enter = fadeIn(tween(500, delayMillis = 200)) +
+                                            slideInVertically(
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow
+                                                ),
+                                                initialOffsetY = { 40 }
+                                            ),
+                                    exit = fadeOut(tween(300)) +
+                                           shrinkVertically(
+                                               animationSpec = spring(
+                                                   dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                   stiffness = Spring.StiffnessLow
+                                               ),
+                                               shrinkTowards = Alignment.Top
+                                           )
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    // Crossfade duration slider integrated within the same card
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 16.dp)
                                     ) {
-                                        Text(
-                                            text = context.getString(R.string.settings_crossfade_duration),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Medium
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = context.getString(R.string.settings_crossfade_duration),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = context.getString(R.string.settings_crossfade_duration_desc, crossfadeDuration),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Slider(
+                                            value = crossfadeDuration,
+                                            onValueChange = { appSettings.setCrossfadeDuration(it) },
+                                            valueRange = 0.5f..12f,
+                                            steps = 22,
+                                            modifier = Modifier.fillMaxWidth()
                                         )
-                                        Text(
-                                            text = context.getString(R.string.settings_crossfade_duration_desc, crossfadeDuration),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Slider(
-                                        value = crossfadeDuration,
-                                        onValueChange = { appSettings.setCrossfadeDuration(it) },
-                                        valueRange = 0.5f..12f,
-                                        steps = 22,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = context.getString(R.string.settings_crossfade_min),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = context.getString(R.string.settings_crossfade_max),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = context.getString(R.string.settings_crossfade_min),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = context.getString(R.string.settings_crossfade_max),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
-                            } else if (index < group.items.lastIndex) {
+                            }
+                            // Add divider between crossfade and bit-perfect settings
+                            if (index < group.items.lastIndex) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
@@ -783,6 +810,8 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                                 when (index) {
                                     0 -> {
                                         appSettings.setAudioRoutingMode("default")
+                                        showRestartDialog = true
+                                        restartDialogMessage = "Audio routing changed to Default. Restart the app to apply the changes."
                                     }
                                     1 -> {
                                         appSettings.setAudioRoutingMode("app")
@@ -790,9 +819,13 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                                         if (!appSettings.bitPerfectMode.value) {
                                             appSettings.setBitPerfectMode(true)
                                         }
+                                        showRestartDialog = true
+                                        restartDialogMessage = "Audio routing changed to App mode. Restart the app to apply the changes."
                                     }
                                     2 -> {
                                         appSettings.setAudioRoutingMode("system")
+                                        showRestartDialog = true
+                                        restartDialogMessage = "Audio routing changed to System. Restart the app to apply the changes."
                                     }
                                 }
                             },
@@ -1415,6 +1448,22 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                 }
             }
         }
+    }
+
+    // App Restart Dialog for audio routing changes
+    if (showRestartDialog) {
+        AppRestartDialog(
+            onDismiss = { showRestartDialog = false },
+            onRestart = {
+                showRestartDialog = false
+                chromahub.rhythm.app.util.AppRestarter.restartApp(context)
+            },
+            onContinue = {
+                showRestartDialog = false
+                // Continue without restart
+            },
+            message = restartDialogMessage
+        )
     }
 }
 
@@ -3173,78 +3222,118 @@ fun ArtistSeparatorsSettingsScreen(onBackClick: () -> Unit) {
                     '&' to "Ampersand"
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    commonDelimiters.forEach { (char, name) ->
+                // Delimiter options in a grid
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp)
+                ) {
+                    items(commonDelimiters) { (char, name) ->
+                        val isSelected = tempDelimiters.contains(char)
+                        
+                        // Master animation states
+                        var isPressed by remember { mutableStateOf(false) }
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "delimiter_scale"
+                        )
+                        
+                        val containerColor by animateColorAsState(
+                            targetValue = if (isSelected)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            ),
+                            label = "delimiter_container_color"
+                        )
+                        
                         Card(
                             onClick = {
                                 HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                isPressed = true
                                 tempDelimiters = if (tempDelimiters.contains(char)) {
                                     tempDelimiters.replace(char.toString(), "")
                                 } else {
                                     tempDelimiters + char
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (tempDelimiters.contains(char))
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                containerColor = containerColor
                             ),
+                            border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .fillMaxSize()
+                                    .padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .background(
-                                                color = if (tempDelimiters.contains(char))
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                else
-                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = char.toString(),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (tempDelimiters.contains(char))
-                                                MaterialTheme.colorScheme.primary
+                                // Delimiter Preview
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(
+                                            color = if (isSelected)
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                             else
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (tempDelimiters.contains(char))
-                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        text = char.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected)
+                                            MaterialTheme.colorScheme.primary
                                         else
-                                            MaterialTheme.colorScheme.onSurface
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                     )
                                 }
-                                Checkbox(
-                                    checked = tempDelimiters.contains(char),
-                                    onCheckedChange = null,
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = MaterialTheme.colorScheme.primary,
-                                        checkmarkColor = MaterialTheme.colorScheme.onPrimary
-                                    )
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isSelected)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                
+                                // Optional description could go here if needed
+                            }
+                        }
+                        
+                        // Reset press state
+                        LaunchedEffect(isPressed) {
+                            if (isPressed) {
+                                delay(150)
+                                isPressed = false
                             }
                         }
                     }
@@ -3252,25 +3341,131 @@ fun ArtistSeparatorsSettingsScreen(onBackClick: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Button(
-                    onClick = {
-                        HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
-                        scope.launch {
-                            appSettings.setArtistSeparatorDelimiters(tempDelimiters)
-                            showDelimiterBottomSheet = false
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    enabled = tempDelimiters.isNotEmpty()
+                // Action Buttons Row - Consistent with other bottom sheets
+                AnimatedVisibility(
+                    visible = showContent,
+                    enter = fadeIn(tween(500, delayMillis = 600)) +
+                            slideInVertically(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                ),
+                                initialOffsetY = { 40 }
+                            )
                 ) {
-                    Text(
-                        text = "Save Changes",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
+                    var savePressed by remember { mutableStateOf(false) }
+                    var resetPressed by remember { mutableStateOf(false) }
+
+                    val saveScale by animateFloatAsState(
+                        targetValue = if (savePressed) 0.96f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "saveScale"
                     )
+
+                    val resetScale by animateFloatAsState(
+                        targetValue = if (resetPressed) 0.96f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "resetScale"
+                    )
+
+                    LaunchedEffect(savePressed) {
+                        if (savePressed) {
+                            delay(150)
+                            savePressed = false
+                        }
+                    }
+
+                    LaunchedEffect(resetPressed) {
+                        if (resetPressed) {
+                            delay(150)
+                            resetPressed = false
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // Reset Button - Secondary action
+                        OutlinedButton(
+                            onClick = {
+                                HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                resetPressed = true
+                                tempDelimiters = artistSeparatorDelimiters // Reset to original
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .graphicsLayer {
+                                    scaleX = resetScale
+                                    scaleY = resetScale
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                width = 1.5.dp
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Reset",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Save Changes Button - Primary action
+                        Button(
+                            onClick = {
+                                HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
+                                savePressed = true
+                                scope.launch {
+                                    appSettings.setArtistSeparatorDelimiters(tempDelimiters)
+                                    showDelimiterBottomSheet = false
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .graphicsLayer {
+                                    scaleX = saveScale
+                                    scaleY = saveScale
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            enabled = tempDelimiters.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Save",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -5105,8 +5300,8 @@ fun UpdatesSettingsScreen(onBackClick: () -> Unit) {
                                 TunerSettingRow(
                                     item = SettingItem(
                                         Icons.Default.Update,
-                                        context.getString(R.string.updates_auto_check_disabled),
-                                        context.getString(R.string.updates_disabled_desc),
+                                        context.getString(R.string.onboarding_periodic_check_title),
+                                        context.getString(R.string.onboarding_periodic_check_desc),
                                         toggleState = autoCheckForUpdates,
                                         onToggleChange = { appSettings.setAutoCheckForUpdates(it) }
                                     )
@@ -5118,8 +5313,8 @@ fun UpdatesSettingsScreen(onBackClick: () -> Unit) {
                                 TunerSettingRow(
                                     item = SettingItem(
                                         Icons.Default.Notifications,
-                                        context.getString(R.string.updates_settings) + " " + context.getString(R.string.updates_enable),
-                                        context.getString(R.string.updates_disabled_desc),
+                                        context.getString(R.string.onboarding_update_notifications_title),
+                                        context.getString(R.string.onboarding_update_notifications_desc),
                                         toggleState = updateNotificationsEnabled,
                                         onToggleChange = { appSettings.setUpdateNotificationsEnabled(it) }
                                     )
@@ -5131,8 +5326,8 @@ fun UpdatesSettingsScreen(onBackClick: () -> Unit) {
                                 TunerSettingRow(
                                     item = SettingItem(
                                         Icons.Default.CloudSync,
-                                        context.getString(R.string.updates_smart_polling),
-                                        context.getString(R.string.updates_smart_polling_desc),
+                                        context.getString(R.string.onboarding_smart_polling_title),
+                                        context.getString(R.string.onboarding_smart_polling_desc),
                                         toggleState = useSmartUpdatePolling,
                                         onToggleChange = { appSettings.setUseSmartUpdatePolling(it) }
                                     )
@@ -10132,6 +10327,10 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
     var showFontSelectionDialog by remember { mutableStateOf(false) }
     var navigateToExpressiveShapes by remember { mutableStateOf(false) }
     
+    // Restart dialog states
+    var showRestartDialog by remember { mutableStateOf(false) }
+    var restartDialogMessage by remember { mutableStateOf("") }
+    
     // Festive theme states
     val festiveThemeEnabled by appSettings.festiveThemeEnabled.collectAsState()
     val festiveThemeAutoDetect by appSettings.festiveThemeAutoDetect.collectAsState()
@@ -10560,6 +10759,22 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
         }  // End of AnimatedContent
     }
 
+    // App Restart Dialog for theme changes
+    if (showRestartDialog) {
+        AppRestartDialog(
+            onDismiss = { showRestartDialog = false },
+            onRestart = {
+                showRestartDialog = false
+                chromahub.rhythm.app.util.AppRestarter.restartApp(context)
+            },
+            onContinue = {
+                showRestartDialog = false
+                // Continue without restart
+            },
+            message = restartDialogMessage
+        )
+    }
+
     // Dialogs
     ColorSourceDialog(
         showDialog = showColorSourceDialog,
@@ -10579,7 +10794,11 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
         appSettings = appSettings,
         customFontPath = customFontPath,
         context = context,
-        haptic = haptic
+        haptic = haptic,
+        onShowRestartDialog = { message ->
+            showRestartDialog = true
+            restartDialogMessage = message
+        }
     )
 
     ColorSchemesDialog(
@@ -10608,6 +10827,7 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
             val tertiaryHex = String.format("%06X", (tertiary.toArgb() and 0xFFFFFF))
             val customScheme = "custom_${primaryHex}_${secondaryHex}_${tertiaryHex}"
             appSettings.setCustomColorScheme(customScheme)
+            showCustomColorsDialog = false
         },
         appSettings = appSettings,
         context = context,
@@ -10623,6 +10843,8 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
         onFontSelected = { selectedFont ->
             appSettings.setCustomFont(selectedFont)
             showFontSelectionDialog = false
+            showRestartDialog = true
+            restartDialogMessage = "Font changed. Restart the app to apply the new font."
         },
         appSettings = appSettings,
         context = context,
@@ -11074,7 +11296,8 @@ private fun FontSourceDialog(
     appSettings: AppSettings,
     customFontPath: String?,
     context: Context,
-    haptic: HapticFeedback
+    haptic: HapticFeedback,
+    onShowRestartDialog: (String) -> Unit
 ) {
     if (showDialog) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -11169,6 +11392,7 @@ private fun FontSourceDialog(
                                     }
                                 }
                                 onDismiss()
+                                onShowRestartDialog("Font source changed. Restart the app to apply the new font.")
                             },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected)
@@ -15398,88 +15622,124 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                 ) {
                     presets.forEach { preset ->
                         val isSelected = preset.id == currentPreset
+                        
+                        // Master animation states
+                        var isPressed by remember { mutableStateOf(false) }
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "preset_scale"
+                        )
+                        
+                        val containerColor by animateColorAsState(
+                            targetValue = if (isSelected)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            ),
+                            label = "preset_container_color"
+                        )
+                        
                         Card(
                             onClick = {
                                 HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                isPressed = true
                                 appSettings.applyExpressiveShapePreset(preset.id)
                                 showPresetDialog = false
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 4.dp)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected)
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else
-                                MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                containerColor = containerColor
+                            ),
+                            border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
-                            Surface(
-                                modifier = Modifier.size(48.dp),
-                                shape = CircleShape,
-                                color = if (isSelected)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.fillMaxSize()
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = preset.icon,
-                                        contentDescription = preset.displayName,
-                                        modifier = Modifier.size(24.dp),
-                                        tint = if (isSelected)
-                                            MaterialTheme.colorScheme.onPrimary
-                                        else
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .background(
+                                                color = if (isSelected)
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                else
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = preset.icon,
+                                            contentDescription = preset.displayName,
+                                            modifier = Modifier.size(24.dp),
+                                            tint = if (isSelected)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = preset.displayName,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isSelected)
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            else
+                                                MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = preset.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isSelected)
+                                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                            else
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                            }
-                            
-                            Spacer(modifier = Modifier.width(16.dp))
-                            
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = preset.displayName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isSelected)
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = preset.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isSelected)
-                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = null,
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = MaterialTheme.colorScheme.primary,
+                                        checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                                    )
                                 )
                             }
-                            
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = "Selected",
-                                    
-                                    modifier = Modifier.size(24.dp)
-                                )
+                        }
+                        
+                        // Reset press state
+                        LaunchedEffect(isPressed) {
+                            if (isPressed) {
+                                delay(150)
+                                isPressed = false
                             }
                         }
                     }
                 }
-            }
             }
         }
     }
@@ -15532,14 +15792,15 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Shape options in a grid
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
                 ) {
                     groupedShapes.forEach { (category, shapes) ->
-                        item(key = "category_$category") {
+                        item(key = "category_$category", span = { GridItemSpan(2) }) {
                             Text(
                                 text = category,
                                 style = MaterialTheme.typography.labelLarge,
@@ -15554,9 +15815,34 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                             key = { "shape_${it.id}" }
                         ) { shape ->
                             val isSelected = shape.id == currentShapeForTarget
+                            
+                            // Master animation states
+                            var isPressed by remember { mutableStateOf(false) }
+                            val scale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.96f else 1f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                ),
+                                label = "shape_scale"
+                            )
+                            
+                            val containerColor by animateColorAsState(
+                                targetValue = if (isSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "shape_container_color"
+                            )
+                            
                             Card(
                                 onClick = {
                                     HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                    isPressed = true
                                     when (targetId) {
                                         "ALBUM_ART" -> appSettings.setExpressiveShapeAlbumArt(shape.id)
                                         "PLAYER_ART" -> appSettings.setExpressiveShapePlayerArt(shape.id)
@@ -15568,25 +15854,30 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                                     }
                                     showShapePickerDialog = null
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    },
+                                shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surfaceContainerHigh
+                                    containerColor = containerColor
                                 ),
-                                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .fillMaxSize()
+                                        .padding(12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
                                 ) {
                                     // Shape Preview
                                     Surface(
-                                        modifier = Modifier.size(40.dp),
+                                        modifier = Modifier.size(48.dp),
                                         shape = rememberExpressiveShape(shape.id, CircleShape),
                                         color = if (isSelected)
                                             MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
@@ -15596,36 +15887,41 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                                         Box(modifier = Modifier.fillMaxSize())
                                     }
                                     
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = shape.displayName,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (isSelected)
-                                                MaterialTheme.colorScheme.onPrimaryContainer
-                                            else
-                                                MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = shape.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isSelected)
-                                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                            else
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Text(
+                                        text = shape.displayName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected)
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.onSurface,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Filled.CheckCircle,
-                                            contentDescription = "Selected",
-                                            
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = shape.description,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isSelected)
+                                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                        else
+                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight * 1.1f
+                                    )
+                                }
+                            }
+                            
+                            // Reset press state
+                            LaunchedEffect(isPressed) {
+                                if (isPressed) {
+                                    delay(150)
+                                    isPressed = false
                                 }
                             }
                         }

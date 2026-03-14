@@ -41,7 +41,8 @@ import chromahub.rhythm.app.shared.presentation.components.common.FileOperationL
 fun AppRestartDialog(
     onDismiss: () -> Unit,
     onRestart: () -> Unit,
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    message: String? = null
 ) {
     val context = LocalContext.current
     
@@ -63,7 +64,7 @@ fun AppRestartDialog(
         },
         text = {
             Text(
-                text = "To ensure all imported playlists work correctly, we recommend restarting the app. You can continue using the app normally, but some features may not work as expected until restart.",
+                text = message ?: "To ensure all imported playlists work correctly, we recommend restarting the app. You can continue using the app normally, but some features may not work as expected until restart.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

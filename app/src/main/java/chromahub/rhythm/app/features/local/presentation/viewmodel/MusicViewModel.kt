@@ -1314,7 +1314,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             )
             if (newSongs.isNotEmpty()) {
                 Log.d(TAG, "Found ${newSongs.size} new songs, updating library")
-                _songs.value = _songs.value + newSongs
+                
+                // Extract embedded artwork for new songs if needed
+                val losslessArtwork = appSettings.losslessArtwork.value
+                val updatedNewSongs = repository.extractEmbeddedArtworkForSongs(newSongs, losslessArtwork)
+                
+                _songs.value = _songs.value + updatedNewSongs
                 _albums.value = repository.loadAlbums()
                 _artists.value = repository.loadArtists()
                 
