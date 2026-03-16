@@ -1,6 +1,7 @@
 name: README Chores
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'app/build.gradle.kts'
