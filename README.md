@@ -32,7 +32,7 @@
 
 ## 🎵 About Rhythm
 
-Rhythm is a modern, open-source music player for Android built with **Material 3 Expressive** design and powered by Media3 ExoPlayer 1.9.2. Now at **v4.2**, Rhythm delivers professional-grade audio with Bit Perfect playback, EAC3-JOC/Dolby Atmos via FFmpeg, a refined expressive UI, multi-select batch library actions, and complete privacy.
+Rhythm is a modern, open-source music player for Android built with **Material 3 Expressive** design and powered by Media3 ExoPlayer 1.9.2. Now at **v4.4.347.928**, Rhythm delivers professional-grade audio with Bit Perfect playback, EAC3-JOC/Dolby Atmos via FFmpeg, a refined expressive UI, multi-select batch library actions, and complete privacy.
 
 ### ✨ Key Features
 
