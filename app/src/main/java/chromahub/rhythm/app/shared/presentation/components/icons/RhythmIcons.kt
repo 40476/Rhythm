@@ -1,6 +1,7 @@
 package chromahub.rhythm.app.shared.presentation.components.icons
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
@@ -59,7 +60,7 @@ import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speaker
-import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Cast
@@ -93,6 +94,7 @@ object RhythmIcons {
         val Repeat = Icons.Rounded.Repeat
         val RepeatOne = Icons.Rounded.RepeatOne
         val Lyrics = Icons.Rounded.Lyrics // Added Lyrics icon
+        val Stop = Icons.Filled.Stop
         
         // Volume controls
         val VolumeUp = Icons.AutoMirrored.Rounded.VolumeUp
@@ -103,7 +105,7 @@ object RhythmIcons {
         // Additional player controls
         val Queue = Icons.AutoMirrored.Rounded.QueueMusic
         val Equalizer = Icons.Rounded.Equalizer
-        val Speed = Icons.Rounded.Speed
+        val Speed = Icons.Rounded.Equalizer
         val Timer = Icons.Rounded.Timer
     }
     
@@ -220,7 +222,7 @@ object RhythmIcons {
     val SettingsFilled = Navigation.Settings
     
     // Mood & moments icons (using appropriate Material icons as substitutes)
-    val Energy = Icons.Rounded.Speed
+    val Energy = Icons.Rounded.Equalizer
     val Relax = Icons.Rounded.Headphones
     val Focus = Icons.Rounded.Timer
     

@@ -3,6 +3,7 @@ package chromahub.rhythm.app.features.local.presentation.components.bottomsheets
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -89,79 +90,91 @@ fun BatchEditTagsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 0.dp, vertical = 0.dp)
         ) {
             // Header - matches standard bottom sheet pattern
             StandardBottomSheetHeader(
                 title = "Batch Edit Tags",
                 subtitle = "${selectedSongs.size} songs selected",
-                visible = true
+                visible = true,
+                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = "Check a field to enable editing. Only checked fields will be applied.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Artist field
-            BatchEditField(
-                label = "Artist",
-                icon = Icons.Rounded.Person,
-                enabled = editArtist,
-                value = artist,
-                onEnabledChange = { editArtist = it },
-                onValueChange = { artist = it }
-            )
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                BatchEditField(
+                    label = "Artist",
+                    icon = Icons.Rounded.Person,
+                    enabled = editArtist,
+                    value = artist,
+                    onEnabledChange = { editArtist = it },
+                    onValueChange = { artist = it }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Album field
-            BatchEditField(
-                label = "Album",
-                icon = Icons.Rounded.Album,
-                enabled = editAlbum,
-                value = album,
-                onEnabledChange = { editAlbum = it },
-                onValueChange = { album = it }
-            )
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                BatchEditField(
+                    label = "Album",
+                    icon = Icons.Rounded.Album,
+                    enabled = editAlbum,
+                    value = album,
+                    onEnabledChange = { editAlbum = it },
+                    onValueChange = { album = it }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Genre field
-            BatchEditField(
-                label = "Genre",
-                icon = Icons.Rounded.Category,
-                enabled = editGenre,
-                value = genre,
-                onEnabledChange = { editGenre = it },
-                onValueChange = { genre = it }
-            )
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                BatchEditField(
+                    label = "Genre",
+                    icon = Icons.Rounded.Category,
+                    enabled = editGenre,
+                    value = genre,
+                    onEnabledChange = { editGenre = it },
+                    onValueChange = { genre = it }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Year field
-            BatchEditField(
-                label = "Year",
-                icon = Icons.Rounded.DateRange,
-                enabled = editYear,
-                value = year,
-                onEnabledChange = { editYear = it },
-                onValueChange = { input ->
-                    if (input.all { it.isDigit() } && input.length <= 4) {
-                        year = input
-                    }
-                },
-                keyboardType = KeyboardType.Number
-            )
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                BatchEditField(
+                    label = "Year",
+                    icon = Icons.Rounded.DateRange,
+                    enabled = editYear,
+                    value = year,
+                    onEnabledChange = { editYear = it },
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() } && input.length <= 4) {
+                            year = input
+                        }
+                    },
+                    keyboardType = KeyboardType.Number
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Progress
             AnimatedVisibility(visible = isSaving) {
-                Column {
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth(),
@@ -179,7 +192,9 @@ fun BatchEditTagsSheet(
 
             // Buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(

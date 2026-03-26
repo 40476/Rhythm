@@ -32,8 +32,20 @@ object BitPerfectAudioSink {
     private var rhythmBassBoostProcessor: RhythmBassBoostProcessor? = null
     private var rhythmSpatializationProcessor: RhythmSpatializationProcessor? = null
     
+    
     /**
-     * Create AudioSink with bit-perfect configuration and Rhythm audio effects
+     * Create AudioSink with optional bit-perfect configuration and Rhythm audio effects.
+     *
+     * Bit-perfect mode:
+     * - Enables float output so ExoPlayer preserves the native sample format
+     *   instead of down-converting everything to 16-bit PCM.
+     * - Strips ALL audio processors (bass boost, spatialization, etc.) so the
+     *   decoded stream reaches the AudioTrack unmodified.
+     *
+     * NOTE: True bit-perfect playback on Android also requires bypassing the
+     * platform audio mixer, which needs MIXER_BEHAVIOR_BIT_PERFECT (Android 14+)
+     * or vendor-specific direct AudioTrack paths. This factory handles the
+     * ExoPlayer side; the mixer bypass is a platform-level concern.
      */
     fun create(
         context: Context, 
@@ -43,38 +55,44 @@ object BitPerfectAudioSink {
     ): AudioSink {
         Log.d(TAG, "Creating AudioSink (bit-perfect: $enableBitPerfect, Rhythm effects: ${bassBoostProcessor != null || spatializationProcessor != null})")
         
-        // Store processor references
+        // Store processor references (available for later queries even if bit-perfect skips them)
         rhythmBassBoostProcessor = bassBoostProcessor
         rhythmSpatializationProcessor = spatializationProcessor
         
-        // Create a builder with the appropriate configuration
         val builder = DefaultAudioSink.Builder(context)
-            .setEnableFloatOutput(false)
             .setEnableAudioTrackPlaybackParams(true)
         
-        // Configure audio processor chain
-        val processors = mutableListOf<AudioProcessor>()
-        
-        // Add Rhythm processors if provided (even if not currently enabled)
-        // The processors' isActive() method will control whether they actually process audio
-        if (bassBoostProcessor != null) {
-            processors.add(bassBoostProcessor)
-            Log.d(TAG, "Added Rhythm bass boost processor (enabled: ${bassBoostProcessor.isEnabled()})")
-        }
-        
-        if (spatializationProcessor != null) {
-            processors.add(spatializationProcessor)
-            Log.d(TAG, "Added Rhythm spatialization processor (enabled: ${spatializationProcessor.isEnabled()})")
-        }
-        
-        // Configure processor chain
-        if (processors.isNotEmpty() || enableBitPerfect) {
-            Log.d(TAG, "Configuring audio processor chain with ${processors.size} Rhythm processors")
-            builder.setAudioProcessorChain(
-                DefaultAudioSink.DefaultAudioProcessorChain(
-                    *processors.toTypedArray()
+        if (enableBitPerfect) {
+            // Bit-perfect: preserve the native sample format (don't force 16-bit).
+            // Float output lets ExoPlayer pass high-res PCM through without truncation.
+            builder.setEnableFloatOutput(true)
+            
+            // No audio processors – the stream must reach the sink unmodified.
+            Log.d(TAG, "Bit-perfect mode: float output enabled, no audio processors")
+        } else {
+            // Normal mode: 16-bit output is fine, add Rhythm DSP processors.
+            builder.setEnableFloatOutput(false)
+            
+            val processors = mutableListOf<AudioProcessor>()
+            
+            if (bassBoostProcessor != null) {
+                processors.add(bassBoostProcessor)
+                Log.d(TAG, "Added Rhythm bass boost processor (enabled: ${bassBoostProcessor.isEnabled()})")
+            }
+            
+            if (spatializationProcessor != null) {
+                processors.add(spatializationProcessor)
+                Log.d(TAG, "Added Rhythm spatialization processor (enabled: ${spatializationProcessor.isEnabled()})")
+            }
+            
+            if (processors.isNotEmpty()) {
+                Log.d(TAG, "Configuring audio processor chain with ${processors.size} Rhythm processors")
+                builder.setAudioProcessorChain(
+                    DefaultAudioSink.DefaultAudioProcessorChain(
+                        *processors.toTypedArray()
+                    )
                 )
-            )
+            }
         }
         
         return builder.build()

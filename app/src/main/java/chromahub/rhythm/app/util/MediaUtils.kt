@@ -1206,6 +1206,8 @@ object MediaUtils {
                         tag.setField(FieldKey.ALBUM, newAlbum)
                         if (newGenre.isNotBlank()) {
                             tag.setField(FieldKey.GENRE, newGenre)
+                        } else {
+                            tag.deleteField(FieldKey.GENRE)
                         }
                         if (newYear > 0) {
                             tag.setField(FieldKey.YEAR, newYear.toString())
@@ -1342,6 +1344,8 @@ object MediaUtils {
                             tag.setField(FieldKey.ALBUM, newAlbum)
                             if (newGenre.isNotBlank()) {
                                 tag.setField(FieldKey.GENRE, newGenre)
+                            } else {
+                                tag.deleteField(FieldKey.GENRE)
                             }
                             if (newYear > 0) {
                                 tag.setField(FieldKey.YEAR, newYear.toString())
@@ -1555,6 +1559,8 @@ object MediaUtils {
             tag.setField(FieldKey.ALBUM, newAlbum)
             if (newGenre.isNotBlank()) {
                 tag.setField(FieldKey.GENRE, newGenre)
+            } else {
+                tag.deleteField(FieldKey.GENRE)
             }
             if (newYear > 0) {
                 tag.setField(FieldKey.YEAR, newYear.toString())

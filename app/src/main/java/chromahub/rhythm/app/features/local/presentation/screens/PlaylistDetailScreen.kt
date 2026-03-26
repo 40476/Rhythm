@@ -116,6 +116,7 @@ import chromahub.rhythm.app.util.HapticUtils
 import chromahub.rhythm.app.util.M3ImageUtils
 import chromahub.rhythm.app.shared.presentation.components.common.rememberExpressiveShapeFor
 import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveShapeTarget
+import chromahub.rhythm.app.shared.presentation.components.common.DragDropLazyColumn
 import chromahub.rhythm.app.features.local.presentation.components.player.formatDuration
 import chromahub.rhythm.app.features.local.presentation.components.bottomsheets.PlaylistSongOptionsBottomSheet
 import chromahub.rhythm.app.features.local.presentation.components.bottomsheets.SongInfoBottomSheet
@@ -1347,6 +1348,16 @@ fun PlaylistDetailScreen(
                         }
                     }
 
+                    val filteredSongsWithIndices = remember(playlist.songs, searchQuery) {
+                        playlist.songs.mapIndexedNotNull { sourceIndex, song ->
+                            val matches = searchQuery.isBlank() ||
+                                song.title.contains(searchQuery, ignoreCase = true) ||
+                                song.artist.contains(searchQuery, ignoreCase = true) ||
+                                song.album.contains(searchQuery, ignoreCase = true)
+                            if (matches) sourceIndex to song else null
+                        }
+                    }
+
                     val listState = rememberLazyListState()
 
                     LaunchedEffect(showSearchBar) {
@@ -1487,63 +1498,102 @@ fun PlaylistDetailScreen(
                             }
                         } else {
                             // Song items
-                            itemsIndexed(filteredSongs, key = { index, song -> "${song.id}-$index" }) { index, song ->
-                                AnimateIn {
-                                    PlaylistSongItem(
-                                        song = song,
-                                        onClick = {
-                                            if (isMultiSelectMode) {
-                                                HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                                selectedSongs = if (selectedSongs.contains(song.id)) {
-                                                    selectedSongs - song.id
-                                                } else {
-                                                    selectedSongs + song.id
-                                                }
-                                                return@PlaylistSongItem
-                                            }
-                                            if (isReorderMode) {
-                                                return@PlaylistSongItem
-                                            }
+                            if (isReorderMode && filteredSongsWithIndices.isNotEmpty()) {
+                                item(key = "playlist_reorder_drag_tablet") {
+                                    val reorderListState = rememberLazyListState()
+                                    DragDropLazyColumn(
+                                        items = filteredSongsWithIndices,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .fillParentMaxHeight(),
+                                        lazyListState = reorderListState,
+                                        onMove = { fromIndex, toIndex ->
+                                            val actualFromIndex = filteredSongsWithIndices[fromIndex].first
+                                            val actualToIndex = filteredSongsWithIndices[toIndex].first
                                             HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                            when (playlistClickBehavior) {
-                                                "play_all" -> {
-                                                    onPlaySongFromPlaylist?.invoke(song, playlist.songs) ?: onSongClick(song)
-                                                }
-                                                "play_one" -> {
-                                                    onSongClick(song)
-                                                }
-                                                else -> {
-                                                    selectedSongForQueue = song
-                                                    showQueueOptionsDialog = true
-                                                }
-                                            }
+                                            onReorderSongs?.invoke(actualFromIndex, actualToIndex)
                                         },
-                                        onRemove = { message -> onRemoveSong(song, message) },
-                                        currentSong = currentSong,
-                                        isPlaying = isPlaying,
-                                        useHoursFormat = useHoursFormat,
-                                        isReorderMode = isReorderMode,
-                                        index = index,
-                                        totalCount = filteredSongs.size,
-                                        onMoveUp = if (isReorderMode && index > 0) {
-                                            {
+                                        itemKey = { item -> "${item.first}_${item.second.id}" }
+                                    ) { indexedSong, isDragging, displayIndex ->
+                                        val song = indexedSong.second
+                                        PlaylistSongItem(
+                                            song = song,
+                                            onClick = { },
+                                            onRemove = { message -> onRemoveSong(song, message) },
+                                            currentSong = currentSong,
+                                            isPlaying = isPlaying,
+                                            useHoursFormat = useHoursFormat,
+                                            isReorderMode = true,
+                                            isDragging = isDragging,
+                                            index = displayIndex,
+                                            totalCount = filteredSongsWithIndices.size,
+                                            onMoveUp = null,
+                                            onMoveDown = null,
+                                            isMultiSelectMode = false,
+                                            isSelected = false,
+                                            onMoreClick = null
+                                        )
+                                    }
+                                }
+                            } else {
+                                itemsIndexed(filteredSongs, key = { index, song -> "${song.id}-$index" }) { index, song ->
+                                    AnimateIn {
+                                        PlaylistSongItem(
+                                            song = song,
+                                            onClick = {
+                                                if (isMultiSelectMode) {
+                                                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                                    selectedSongs = if (selectedSongs.contains(song.id)) {
+                                                        selectedSongs - song.id
+                                                    } else {
+                                                        selectedSongs + song.id
+                                                    }
+                                                    return@PlaylistSongItem
+                                                }
+                                                if (isReorderMode) {
+                                                    return@PlaylistSongItem
+                                                }
                                                 HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                                onReorderSongs?.invoke(index, index - 1)
+                                                when (playlistClickBehavior) {
+                                                    "play_all" -> {
+                                                        onPlaySongFromPlaylist?.invoke(song, playlist.songs) ?: onSongClick(song)
+                                                    }
+                                                    "play_one" -> {
+                                                        onSongClick(song)
+                                                    }
+                                                    else -> {
+                                                        selectedSongForQueue = song
+                                                        showQueueOptionsDialog = true
+                                                    }
+                                                }
+                                            },
+                                            onRemove = { message -> onRemoveSong(song, message) },
+                                            currentSong = currentSong,
+                                            isPlaying = isPlaying,
+                                            useHoursFormat = useHoursFormat,
+                                            isReorderMode = isReorderMode,
+                                            index = index,
+                                            totalCount = filteredSongs.size,
+                                            onMoveUp = if (isReorderMode && index > 0) {
+                                                {
+                                                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                                    onReorderSongs?.invoke(index, index - 1)
+                                                }
+                                            } else null,
+                                            onMoveDown = if (isReorderMode && index < filteredSongs.size - 1) {
+                                                {
+                                                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                                    onReorderSongs?.invoke(index, index + 1)
+                                                }
+                                            } else null,
+                                            isMultiSelectMode = isMultiSelectMode,
+                                            isSelected = selectedSongs.contains(song.id),
+                                            onMoreClick = {
+                                                selectedSongForOptions = song
+                                                showSongOptionsSheet = true
                                             }
-                                        } else null,
-                                        onMoveDown = if (isReorderMode && index < filteredSongs.size - 1) {
-                                            {
-                                                HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                                onReorderSongs?.invoke(index, index + 1)
-                                            }
-                                        } else null,
-                                        isMultiSelectMode = isMultiSelectMode,
-                                        isSelected = selectedSongs.contains(song.id),
-                                        onMoreClick = {
-                                            selectedSongForOptions = song
-                                            showSongOptionsSheet = true
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1737,6 +1787,16 @@ fun PlaylistDetailScreen(
                                 song.artist.contains(searchQuery, ignoreCase = true) ||
                                 song.album.contains(searchQuery, ignoreCase = true)
                     }
+                }
+            }
+
+            val filteredSongsWithIndices = remember(playlist.songs, searchQuery) {
+                playlist.songs.mapIndexedNotNull { sourceIndex, song ->
+                    val matches = searchQuery.isBlank() ||
+                        song.title.contains(searchQuery, ignoreCase = true) ||
+                        song.artist.contains(searchQuery, ignoreCase = true) ||
+                        song.album.contains(searchQuery, ignoreCase = true)
+                    if (matches) sourceIndex to song else null
                 }
             }
 
@@ -2020,68 +2080,107 @@ fun PlaylistDetailScreen(
                         }
                     }
                     
-                    itemsIndexed(filteredSongs, key = { index, song -> "${song.id}-$index" }) { index, song ->
-                        AnimateIn {
-                            PlaylistSongItem(
-                                song = song,
-                                onClick = {
-                                    if (isMultiSelectMode) {
-                                        // Toggle selection
-                                        HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                        selectedSongs = if (selectedSongs.contains(song.id)) {
-                                            selectedSongs - song.id
-                                        } else {
-                                            selectedSongs + song.id
-                                        }
-                                        return@PlaylistSongItem
-                                    }
-                                    if (isReorderMode) {
-                                        // Don't play in reorder mode
-                                        return@PlaylistSongItem
-                                    }
+                    if (isReorderMode && filteredSongsWithIndices.isNotEmpty()) {
+                        item(key = "playlist_reorder_drag_phone") {
+                            val reorderListState = rememberLazyListState()
+                            DragDropLazyColumn(
+                                items = filteredSongsWithIndices,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillParentMaxHeight(),
+                                lazyListState = reorderListState,
+                                onMove = { fromIndex, toIndex ->
+                                    val actualFromIndex = filteredSongsWithIndices[fromIndex].first
+                                    val actualToIndex = filteredSongsWithIndices[toIndex].first
                                     HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                    when (playlistClickBehavior) {
-                                        "play_all" -> {
-                                            // Load entire playlist and play from selected song
-                                            onPlaySongFromPlaylist?.invoke(song, playlist.songs) ?: onSongClick(song)
-                                        }
-                                        "play_one" -> {
-                                            // Play only this song
-                                            onSongClick(song)
-                                        }
-                                        else -> {
-                                            // "ask" - Show dialog
-                                            selectedSongForQueue = song
-                                            showQueueOptionsDialog = true
-                                        }
-                                    }
+                                    onReorderSongs?.invoke(actualFromIndex, actualToIndex)
                                 },
-                                onRemove = { message -> onRemoveSong(song, message) },
-                                currentSong = currentSong,
-                                isPlaying = isPlaying,
-                                useHoursFormat = useHoursFormat,
-                                isReorderMode = isReorderMode,
-                                index = index,
-                                totalCount = filteredSongs.size,
-                                onMoveUp = if (isReorderMode && index > 0) {
-                                    {
+                                itemKey = { item -> "${item.first}_${item.second.id}" }
+                            ) { indexedSong, isDragging, displayIndex ->
+                                val song = indexedSong.second
+                                PlaylistSongItem(
+                                    song = song,
+                                    onClick = { },
+                                    onRemove = { message -> onRemoveSong(song, message) },
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    useHoursFormat = useHoursFormat,
+                                    isReorderMode = true,
+                                    isDragging = isDragging,
+                                    index = displayIndex,
+                                    totalCount = filteredSongsWithIndices.size,
+                                    onMoveUp = null,
+                                    onMoveDown = null,
+                                    isMultiSelectMode = false,
+                                    isSelected = false,
+                                    onMoreClick = null
+                                )
+                            }
+                        }
+                    } else {
+                        itemsIndexed(filteredSongs, key = { index, song -> "${song.id}-$index" }) { index, song ->
+                            AnimateIn {
+                                PlaylistSongItem(
+                                    song = song,
+                                    onClick = {
+                                        if (isMultiSelectMode) {
+                                            // Toggle selection
+                                            HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                            selectedSongs = if (selectedSongs.contains(song.id)) {
+                                                selectedSongs - song.id
+                                            } else {
+                                                selectedSongs + song.id
+                                            }
+                                            return@PlaylistSongItem
+                                        }
+                                        if (isReorderMode) {
+                                            // Don't play in reorder mode
+                                            return@PlaylistSongItem
+                                        }
                                         HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                        onReorderSongs?.invoke(index, index - 1)
+                                        when (playlistClickBehavior) {
+                                            "play_all" -> {
+                                                // Load entire playlist and play from selected song
+                                                onPlaySongFromPlaylist?.invoke(song, playlist.songs) ?: onSongClick(song)
+                                            }
+                                            "play_one" -> {
+                                                // Play only this song
+                                                onSongClick(song)
+                                            }
+                                            else -> {
+                                                // "ask" - Show dialog
+                                                selectedSongForQueue = song
+                                                showQueueOptionsDialog = true
+                                            }
+                                        }
+                                    },
+                                    onRemove = { message -> onRemoveSong(song, message) },
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    useHoursFormat = useHoursFormat,
+                                    isReorderMode = isReorderMode,
+                                    index = index,
+                                    totalCount = filteredSongs.size,
+                                    onMoveUp = if (isReorderMode && index > 0) {
+                                        {
+                                            HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                            onReorderSongs?.invoke(index, index - 1)
+                                        }
+                                    } else null,
+                                    onMoveDown = if (isReorderMode && index < filteredSongs.size - 1) {
+                                        {
+                                            HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                            onReorderSongs?.invoke(index, index + 1)
+                                        }
+                                    } else null,
+                                    isMultiSelectMode = isMultiSelectMode,
+                                    isSelected = selectedSongs.contains(song.id),
+                                    onMoreClick = {
+                                        selectedSongForOptions = song
+                                        showSongOptionsSheet = true
                                     }
-                                } else null,
-                                onMoveDown = if (isReorderMode && index < filteredSongs.size - 1) {
-                                    {
-                                        HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                        onReorderSongs?.invoke(index, index + 1)
-                                    }
-                                } else null,
-                                isMultiSelectMode = isMultiSelectMode,
-                                isSelected = selectedSongs.contains(song.id),
-                                onMoreClick = {
-                                    selectedSongForOptions = song
-                                    showSongOptionsSheet = true
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -2499,6 +2598,7 @@ fun PlaylistSongItem(
     isPlaying: Boolean = false,
     useHoursFormat: Boolean = false,
     isReorderMode: Boolean = false,
+    isDragging: Boolean = false,
     index: Int = 0,
     totalCount: Int = 0,
     onMoveUp: (() -> Unit)? = null,
@@ -2594,7 +2694,7 @@ fun PlaylistSongItem(
     
     // Add scale animation for reorder and select modes
     val itemScale by animateFloatAsState(
-        targetValue = if (isReorderMode || isMultiSelectMode) 0.98f else 1f,
+        targetValue = if (isDragging) 1.005f else if (isReorderMode || isMultiSelectMode) 0.98f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -2602,9 +2702,9 @@ fun PlaylistSongItem(
         label = "itemScale"
     )
     
-    // Add elevation animation
+    // Keep drag state visually flat (no lift/shadow effect while dragging)
     val itemElevation by animateDpAsState(
-        targetValue = if (isReorderMode) 4.dp else 2.dp,
+        targetValue = if (isDragging) 0.dp else if (isReorderMode) 1.dp else 2.dp,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -2746,43 +2846,29 @@ fun PlaylistSongItem(
             
             // Show reorder buttons, remove button, or 3-dot menu depending on mode
             if (isReorderMode) {
-                // Reorder buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Move up button
-                    FilledIconButton(
-                        onClick = { onMoveUp?.invoke() },
-                        enabled = onMoveUp != null,
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                        ),
-                        modifier = Modifier.size(36.dp)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isDragging) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    },
+                    tonalElevation = if (isDragging) 0.dp else 1.dp,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowUpward,
-                            contentDescription = "Move up",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    
-                    // Move down button
-                    FilledIconButton(
-                        onClick = { onMoveDown?.invoke() },
-                        enabled = onMoveDown != null,
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                        ),
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDownward,
-                            contentDescription = "Move down",
-                            modifier = Modifier.size(18.dp)
+                            imageVector = Icons.Default.DragHandle,
+                            contentDescription = "Drag to reorder",
+                            tint = if (isDragging) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            },
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }

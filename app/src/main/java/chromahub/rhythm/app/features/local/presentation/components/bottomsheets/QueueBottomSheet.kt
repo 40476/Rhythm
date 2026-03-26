@@ -1,6 +1,7 @@
 package chromahub.rhythm.app.features.local.presentation.components.bottomsheets
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
@@ -58,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -84,12 +86,16 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.VideoLibrary
 import chromahub.rhythm.app.R
+import chromahub.rhythm.app.shared.data.model.AppSettings
 import chromahub.rhythm.app.shared.data.model.Song
 import chromahub.rhythm.app.shared.presentation.components.icons.RhythmIcons
 import chromahub.rhythm.app.shared.presentation.components.common.M3PlaceholderType
 import chromahub.rhythm.app.shared.presentation.components.common.DragDropLazyColumn
+import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveClickableSurface
+import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveFilledTonalIconButton
+import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveShapeTarget
+import chromahub.rhythm.app.shared.presentation.components.common.rememberExpressiveShapeFor
 import chromahub.rhythm.app.util.ImageUtils
-import kotlin.collections.IndexedValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +114,9 @@ fun QueueBottomSheet(
 ) {
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    val appSettings = remember(context) { AppSettings.getInstance(context) }
+    val hidePlayedQueueSongs by appSettings.hidePlayedQueueSongs.collectAsState()
+    val showAlreadyPlayedSongsInQueue = !hidePlayedQueueSongs
     // Animation states
     var showContent by remember { mutableStateOf(false) }
     
@@ -200,17 +209,15 @@ fun QueueBottomSheet(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
                 
-                // Filter out the current song from the queue to show upcoming songs
-                val upcomingQueue = mutableQueue.mapIndexed { index, song -> 
-                    IndexedValue(index, song) 
-                }.filter { indexedSong ->
-                    val currentSongIndexInQueue = currentQueueIndex.coerceAtLeast(0)
-                    indexedSong.index > currentSongIndexInQueue
+                val currentSongIndexInQueue = currentQueueIndex.coerceIn(0, mutableQueue.lastIndex)
+                // Show full queue (except current song card) so finished songs remain visible.
+                val visibleQueue = mutableQueue.mapIndexedNotNull { index, song ->
+                    if (!showAlreadyPlayedSongsInQueue && index < currentSongIndexInQueue) return@mapIndexedNotNull null
+                    if (index == currentSongIndexInQueue) null else index to song
                 }
-                
-                // Show "UP NEXT" section if there are upcoming songs
-                if (upcomingQueue.isNotEmpty()) {
-                    // Queue header for upcoming songs
+
+                if (visibleQueue.isNotEmpty()) {
+                    // Queue header for visible queue songs
                     AnimatedVisibility(
                         visible = showContent,
                         enter = fadeIn() + slideInVertically { it },
@@ -240,7 +247,7 @@ fun QueueBottomSheet(
                             )
 
                             Text(
-                                text = "${upcomingQueue.size}",
+                                text = "${visibleQueue.size}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
@@ -257,19 +264,19 @@ fun QueueBottomSheet(
                     val lazyListState = rememberLazyListState()
                     
                     DragDropLazyColumn(
-                        items = upcomingQueue,
+                        items = visibleQueue,
                         modifier = Modifier.fillMaxWidth(),
                         lazyListState = lazyListState,
                         onMove = { fromIndex, toIndex ->
-                            // Calculate actual queue indices accounting for current song offset
-                            val actualFromIndex = currentQueueIndex + fromIndex + 1
-                            val actualToIndex = currentQueueIndex + toIndex + 1
+                            val actualFromIndex = visibleQueue[fromIndex].first
+                            val actualToIndex = visibleQueue[toIndex].first
                             onMoveQueueItem(actualFromIndex, actualToIndex)
                         },
-                        itemKey = { indexedSong -> "${indexedSong.index}_${indexedSong.value.id}" }
-                    ) { indexedSong, isDragging, displayIndex ->
-                        val song = indexedSong.value
-                        val actualQueuePosition = currentQueueIndex + displayIndex + 1
+                        itemKey = { queueItem -> "${queueItem.first}_${queueItem.second.id}" }
+                    ) { queueItem, isDragging, _ ->
+                        val actualQueuePosition = queueItem.first
+                        val song = queueItem.second
+                        val isPlayed = actualQueuePosition < currentSongIndexInQueue
                         
                         Box(
                             modifier = Modifier
@@ -280,6 +287,7 @@ fun QueueBottomSheet(
                                 QueueItem(
                                     song = song,
                                     index = actualQueuePosition,
+                                    isPlayed = isPlayed,
                                     isDragging = isDragging,
                                     onSongClick = { 
                                         // Use index-based click to handle duplicate songs correctly
@@ -506,53 +514,78 @@ private fun NowPlayingCard(
 private fun QueueItem(
     song: Song,
     index: Int,
+    isPlayed: Boolean,
     isDragging: Boolean,
     onSongClick: () -> Unit,
     onRemove: () -> Unit
 ) {
     val context = LocalContext.current
+
+    val dragCardScale by animateFloatAsState(
+        targetValue = if (isDragging) 1.015f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "dragCardScale"
+    )
+
+    val dragCardOffsetY by animateFloatAsState(
+        targetValue = if (isDragging) -4f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "dragCardOffsetY"
+    )
+
+    val cardColor by animateColorAsState(
+        targetValue = when {
+            isDragging -> MaterialTheme.colorScheme.secondaryContainer
+            isPlayed -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.42f)
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "queueItemCardColor"
+    )
+
+    val titleColor by animateColorAsState(
+        targetValue = when {
+            isDragging -> MaterialTheme.colorScheme.onSecondaryContainer
+            isPlayed -> MaterialTheme.colorScheme.onTertiaryContainer
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "queueItemTitleColor"
+    )
+
+    val subtitleColor by animateColorAsState(
+        targetValue = when {
+            isDragging -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+            isPlayed -> MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f)
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "queueItemSubtitleColor"
+    )
     
-    // Enhanced drag animation
-    // val dragScale by animateFloatAsState(
-    //     targetValue = if (isDragging) 1.02f else 1f,
-    //     animationSpec = spring(
-    //         dampingRatio = Spring.DampingRatioMediumBouncy,
-    //         stiffness = Spring.StiffnessMedium
-    //     ),
-    //     label = "dragScale"
-    // )
-    
-    // val dragElevation by animateFloatAsState(
-    //     targetValue = if (isDragging) 8f else 0f,
-    //     animationSpec = spring(
-    //         dampingRatio = Spring.DampingRatioMediumBouncy,
-    //         stiffness = Spring.StiffnessMedium
-    //     ),
-    //     label = "dragElevation"
-    // )
-    
-    OutlinedCard(
+    val songArtShape = rememberExpressiveShapeFor(
+        ExpressiveShapeTarget.SONG_ART,
+        fallbackShape = RoundedCornerShape(8.dp)
+    )
+
+    ExpressiveClickableSurface(
         onClick = onSongClick,
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (isDragging) 
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-            else
-                MaterialTheme.colorScheme.surfaceContainer
-        ),
-        border = BorderStroke(
-            width = if (isDragging) 2.dp else 1.dp,
-            color = if (isDragging)
-                MaterialTheme.colorScheme.primary
-            else
-                MaterialTheme.colorScheme.outlineVariant
-        ),
-        shape = RoundedCornerShape(15.dp),
+        color = cardColor,
+        tonalElevation = if (isDragging) 0.dp else 1.dp,
+        shadowElevation = 0.dp,
+        shape = RoundedCornerShape(20.dp),
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
-                // scaleX = dragScale
-                // scaleY = dragScale
-                // shadowElevation = dragElevation
+                scaleX = dragCardScale
+                scaleY = dragCardScale
+                translationY = dragCardOffsetY
             }
     ) {
         Row(
@@ -575,7 +608,11 @@ private fun QueueItem(
                         text = "${index + 1}",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = if (isDragging) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
                     )
                 }
             }
@@ -585,7 +622,7 @@ private fun QueueItem(
             // Album art
             Surface(
                 modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = songArtShape,
                 tonalElevation = 2.dp
             ) {
                 AsyncImage(
@@ -613,6 +650,7 @@ private fun QueueItem(
                     text = song.title,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
+                    color = titleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -620,7 +658,7 @@ private fun QueueItem(
                 Text(
                     text = song.artist,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = subtitleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -639,8 +677,10 @@ private fun QueueItem(
             Icon(
                 imageVector = Icons.Default.DragHandle,
                 contentDescription = "Drag to reorder",
-                tint = if (isDragging) 
-                    MaterialTheme.colorScheme.primary 
+                tint = if (isDragging)
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                else if (isPlayed)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                 else 
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier
@@ -664,7 +704,7 @@ private fun QueueItem(
                 label = "buttonScale"
             )
             
-            IconButton(
+            ExpressiveFilledTonalIconButton(
                 onClick = {
                     isPressed = true
                     onRemove()
@@ -679,7 +719,7 @@ private fun QueueItem(
                         scaleX = buttonScale
                         scaleY = buttonScale
                     }
-            ) {
+                ) {
                 Icon(
                     imageVector = Icons.Default.Clear,
                     contentDescription = "Remove from queue",

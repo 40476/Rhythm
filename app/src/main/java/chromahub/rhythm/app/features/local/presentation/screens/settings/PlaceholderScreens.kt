@@ -490,6 +490,8 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
     val shuffleUsesExoplayer by appSettings.shuffleUsesExoplayer.collectAsState()
     val autoAddToQueue by appSettings.autoAddToQueue.collectAsState()
     val clearQueueOnNewSong by appSettings.clearQueueOnNewSong.collectAsState()
+    val hidePlayedQueueSongs by appSettings.hidePlayedQueueSongs.collectAsState()
+    val showAlreadyPlayedSongsInQueue = !hidePlayedQueueSongs
     val showQueueDialog by appSettings.showQueueDialog.collectAsState()
     val repeatModePersistence by appSettings.repeatModePersistence.collectAsState()
     val shuffleModePersistence by appSettings.shuffleModePersistence.collectAsState()
@@ -537,6 +539,13 @@ fun QueuePlaybackSettingsScreen(onBackClick: () -> Unit) {
                         context.getString(R.string.settings_clear_queue_on_new_song_desc),
                         toggleState = clearQueueOnNewSong,
                         onToggleChange = { appSettings.setClearQueueOnNewSong(it) }
+                    ),
+                    SettingItem(
+                        RhythmIcons.Queue,
+                        context.getString(R.string.settings_show_played_queue_songs),
+                        context.getString(R.string.settings_show_played_queue_songs_desc),
+                        toggleState = showAlreadyPlayedSongsInQueue,
+                        onToggleChange = { appSettings.setHidePlayedQueueSongs(!it) }
                     ),
                     SettingItem(
                         RhythmIcons.Queue,
@@ -6092,61 +6101,32 @@ private fun FestivalSelectionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 0.dp, vertical = 0.dp)
                 .padding(bottom = 24.dp)
                 .graphicsLayer(alpha = contentAlpha)
         ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 0.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(
-                        text = "Select Festival",
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = CircleShape
-                            )
-                    ) {
-                        Text(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            text = "Choose festive theme",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
+            StandardBottomSheetHeader(
+                title = "Select Festival",
+                subtitle = "Choose festive theme",
+                visible = showContent,
+                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Festival Options
             val festivals = listOf(
                 Triple("CHRISTMAS", "Christmas", Icons.Default.AcUnit),
-                Triple("NEW_YEAR", "New Year", Icons.Default.Celebration),
-                Triple("VALENTINES", "Valentine's Day", Icons.Default.Favorite),
-                Triple("HALLOWEEN", "Halloween", Icons.Default.Nightlight)
+                Triple("NEW_YEAR", "New Year", Icons.Default.Celebration)
             )
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 20.dp)
             ) {
                 festivals.forEach { (value, name, icon) ->
                     val isSelected = currentFestival == value
-                    val isAvailable = value == "CHRISTMAS" || value == "NEW_YEAR"
+                    val isAvailable = true
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -6198,13 +6178,6 @@ private fun FestivalSelectionBottomSheet(
                                             else -> MaterialTheme.colorScheme.onSurface
                                         }
                                     )
-                                    if (!isAvailable) {
-                                        Text(
-                                            text = "Coming soon",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
                                 }
                             }
 
@@ -6257,8 +6230,6 @@ private fun getFestivalDisplayName(festivalType: String): String {
     return when (festivalType) {
         "CHRISTMAS" -> "Christmas"
         "NEW_YEAR" -> "New Year"
-        "VALENTINES" -> "Valentine's Day"
-        "HALLOWEEN" -> "Halloween"
         "NONE" -> "None"
         "CUSTOM" -> "Custom"
         else -> "Not selected"
@@ -8235,6 +8206,7 @@ fun MiniPlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
     val miniPlayerShowTime by appSettings.miniPlayerShowTime.collectAsState()
     val miniPlayerUseCircularProgress by appSettings.miniPlayerUseCircularProgress.collectAsState()
     val miniPlayerAlwaysShowTablet by appSettings.miniPlayerAlwaysShowTablet.collectAsState()
+    val expressiveShapesEnabled by appSettings.expressiveShapesEnabled.collectAsState()
 
     var showMiniPlayerProgressStyleSheet by remember { mutableStateOf(false) }
     var showMiniPlayerArtworkSizeSheet by remember { mutableStateOf(false) }
@@ -8447,12 +8419,21 @@ fun MiniPlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 20.dp),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                         )
-                        SettingRow(
-                            icon = Icons.Default.RoundedCorner,
-                            title = "Corner Radius",
-                            description = "${miniPlayerCornerRadius}dp",
-                            onClick = { showMiniPlayerCornerRadiusSheet = true }
-                        )
+                        if (expressiveShapesEnabled) {
+                            SettingRow(
+                                icon = Icons.Default.RoundedCorner,
+                                title = "Corner Radius",
+                                description = "Managed by Expressive Shapes",
+                                onClick = null
+                            )
+                        } else {
+                            SettingRow(
+                                icon = Icons.Default.RoundedCorner,
+                                title = "Corner Radius",
+                                description = "${miniPlayerCornerRadius}dp",
+                                onClick = { showMiniPlayerCornerRadiusSheet = true }
+                            )
+                        }
                     }
                 }
             }
@@ -8720,6 +8701,7 @@ fun PlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
     val playerShowSongInfoOnArtwork by appSettings.playerShowSongInfoOnArtwork.collectAsState()
     val playerArtworkCornerRadius by appSettings.playerArtworkCornerRadius.collectAsState()
     val playerShowAudioQualityBadges by appSettings.playerShowAudioQualityBadges.collectAsState()
+    val expressiveShapesEnabled by appSettings.expressiveShapesEnabled.collectAsState()
 
     // Progress bar settings
     val playerProgressStyle by appSettings.playerProgressStyle.collectAsState()
@@ -9204,12 +9186,21 @@ fun PlayerCustomizationSettingsScreen(onBackClick: () -> Unit) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    SettingRow(
-                        icon = Icons.Default.RoundedCorner,
-                        title = "Corner Radius",
-                        description = "${playerArtworkCornerRadius}dp",
-                        onClick = { showCornerRadiusSheet = true }
-                    )
+                    if (expressiveShapesEnabled) {
+                        SettingRow(
+                            icon = Icons.Default.RoundedCorner,
+                            title = "Corner Radius",
+                            description = "Managed by Expressive Shapes",
+                            onClick = null
+                        )
+                    } else {
+                        SettingRow(
+                            icon = Icons.Default.RoundedCorner,
+                            title = "Corner Radius",
+                            description = "${playerArtworkCornerRadius}dp",
+                            onClick = { showCornerRadiusSheet = true }
+                        )
+                    }
                 }
             }
 
@@ -10865,16 +10856,15 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = 0.dp)
                     .padding(bottom = 24.dp)
             ) {
                 item {
-                    Text(
-                        text = context.getString(R.string.theme_festive_settings),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                    StandardBottomSheetHeader(
+                        title = context.getString(R.string.theme_festive_settings),
+                        subtitle = "Choose festive theme",
+                        visible = true,
+                        modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
                     )
                 }
                 
@@ -10885,20 +10875,22 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 8.dp)
                     )
                 }
                 
                 item {
                     val festivals = listOf(
                         "CHRISTMAS" to "Christmas",
-                        "NEW_YEAR" to "New Year",
-                        "HALLOWEEN" to "Halloween",
-                        "VALENTINES" to "Valentine's Day",
-                        "DIWALI" to "Diwali"
+                        "NEW_YEAR" to "New Year"
                     )
                     
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    ) {
                         festivals.forEach { (id, name) ->
                             val isSelected = id == festiveThemeType
                             Card(
@@ -10954,10 +10946,14 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 12.dp)
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -10977,7 +10973,9 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         value = festiveThemeIntensity,
                         onValueChange = { appSettings.setFestiveThemeIntensity(it) },
                         valueRange = 0.1f..1f,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
                     )
                 }
                 
@@ -10985,7 +10983,9 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -11005,7 +11005,9 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         value = festiveSnowflakeSize,
                         onValueChange = { appSettings.setFestiveSnowflakeSize(it) },
                         valueRange = 0.5f..2.0f,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
                     )
                 }
                 
@@ -11015,11 +11017,14 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                     Text(
                         text = "Snowflake Display Area",
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 20.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilterChip(
@@ -11051,12 +11056,17 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 8.dp)
                     )
                 }
                 
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    ) {
                         DecorationToggleCard(
                             title = "Snowfall",
                             description = "Animated falling snowflakes",
@@ -15426,6 +15436,50 @@ fun ExpressiveShapesSettingsScreen(onBackClick: () -> Unit) {
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+            
+            // Randomize Button
+            item(key = "randomize_shapes") {
+                AnimatedVisibility(
+                    visible = expressiveShapesEnabled,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Card(
+                        onClick = {
+                            HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
+                            appSettings.randomizeExpressiveShapes()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shuffle,
+                                contentDescription = "Randomize shapes",
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Randomize All Shapes",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
                         }
                     }
                 }

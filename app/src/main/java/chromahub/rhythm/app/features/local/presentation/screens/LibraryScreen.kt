@@ -699,8 +699,8 @@ fun LibraryScreen(
                 }
             },
             onAddToBlacklist = {
-                // Add first selected song to blacklist
-                selectedSongs.firstOrNull()?.let { song ->
+                // Add all selected songs to blacklist
+                selectedSongs.forEach { song ->
                     appSettings.addToBlacklist(song.id)
                 }
             },

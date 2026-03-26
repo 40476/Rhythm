@@ -69,8 +69,8 @@
     <string name="settings_use_exoplayer_shuffle_desc">Let the media player handle shuffle (recommended: OFF for manual shuffle)</string>
     <string name="settings_auto_queue">Auto Queue</string>
     <string name="settings_auto_queue_desc">Automatically add related songs to queue when playing</string>
-    <string name="settings_clear_queue_on_new_song">Clear Queue on New Song</string>
-    <string name="settings_clear_queue_on_new_song_desc">Clear the current queue when playing a new song directly</string>
+    <string name="settings_clear_queue_on_new_song">Replace Queue on New Song</string>
+    <string name="settings_clear_queue_on_new_song_desc">Playing a song directly clears the current queue.</string>
     <string name="settings_playback_persistence">Playback Persistence</string>
     <string name="settings_remember_repeat_mode">Remember Repeat Mode</string>
     <string name="settings_remember_repeat_mode_desc">Save repeat mode (Off/All/One) between app restarts</string>
@@ -1196,6 +1196,8 @@
     <string name="settings_section_audio_playback">Audio &amp; Playback</string>
     <string name="settings_system_volume">System Volume</string>
     <string name="settings_system_volume_desc">System audio</string>
+    <string name="settings_stop_playback_on_zero_volume">Stop on Zero Volume</string>
+    <string name="settings_stop_playback_on_zero_volume_desc">Stop playback when volume reaches zero</string>
     <string name="settings_show_lyrics">Show Lyrics</string>
     <string name="settings_show_lyrics_desc">Lyrics display</string>
     <string name="settings_queue_playback_title">Queue &amp; Playback</string>
@@ -1673,8 +1675,8 @@
     <string name="queue_use_exoplayer_shuffle_desc">Let the media player handle shuffle</string>
     <string name="queue_auto_add">Auto Add to Queue</string>
     <string name="queue_auto_add_desc">Automatically add related songs when playing</string>
-    <string name="queue_clear_on_new">Clear on New Song</string>
-    <string name="queue_clear_on_new_desc">Clear queue when playing a new song directly</string>
+    <string name="queue_clear_on_new">Replace Queue on New Song</string>
+    <string name="queue_clear_on_new_desc">Playing a song directly clears the current queue.</string>
     <string name="queue_remember_repeat">Remember Repeat Mode</string>
     <string name="queue_remember_repeat_desc">Save repeat mode between app restarts</string>
     <string name="queue_remember_shuffle">Remember Shuffle Mode</string>
@@ -2555,6 +2557,8 @@
     <string name="settings_queue_auto_add_desc">Auto-add songs</string>
     <string name="settings_queue_clear_on_new">Clear Queue on New Song</string>
     <string name="settings_queue_clear_on_new_desc">Clear on new song</string>
+    <string name="settings_show_played_queue_songs">Show Already Played Songs in Queue</string>
+    <string name="settings_show_played_queue_songs_desc">Show songs that were already played in queue</string>
 
     <string name="settings_queue_action_dialog_desc">Prompt when queue full</string>
     <string name="settings_queue_repeat_persistence">Remember Repeat Mode</string>

@@ -311,6 +311,7 @@ fun PlayerScreen(
     val appSettingsInstance =
         appSettings ?: chromahub.rhythm.app.shared.data.model.AppSettings.getInstance(context)
     val useSystemVolume by appSettingsInstance.useSystemVolume.collectAsState()
+    val stopPlaybackOnZeroVolume by appSettingsInstance.stopPlaybackOnZeroVolume.collectAsState()
     val groupByAlbumArtist by appSettingsInstance.groupByAlbumArtist.collectAsState()
     val useHoursFormat by appSettingsInstance.useHoursInTimeFormat.collectAsState()
     val enableRatingSystem by appSettingsInstance.enableRatingSystem.collectAsState()
@@ -398,6 +399,13 @@ fun PlayerScreen(
             try { kotlinx.coroutines.awaitCancellation() } finally {
                 context.contentResolver.unregisterContentObserver(volumeObserver)
             }
+        }
+    }
+
+    // Stop playback when system volume reaches 0 if setting is enabled
+    LaunchedEffect(systemVolume, stopPlaybackOnZeroVolume, isPlaying) {
+        if (useSystemVolume && stopPlaybackOnZeroVolume && systemVolume == 0f && isPlaying) {
+            onPlayPause()
         }
     }
 

@@ -785,6 +785,16 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             parentScreen = "Queue & Playback"
         ))
         add(SearchableSettingItem(
+            id = "queue_hide_played",
+            title = context.getString(R.string.settings_show_played_queue_songs),
+            description = context.getString(R.string.settings_show_played_queue_songs_desc),
+            keywords = listOf("queue", "played", "history", "show", "finished songs", "already played"),
+            icon = RhythmIcons.Queue,
+            route = SettingsRoutes.QUEUE_PLAYBACK,
+            parentScreen = "Queue & Playback",
+            settingKey = "hidePlayedQueueSongs"
+        ))
+        add(SearchableSettingItem(
             id = "queue_action_dialog",
             title = context.getString(R.string.settings_queue_action_dialog),
             description = context.getString(R.string.settings_queue_action_dialog_desc),
@@ -906,7 +916,7 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             id = "exp_festive_theme",
             title = context.getString(R.string.settings_exp_festive_theme),
             description = context.getString(R.string.settings_exp_festive_theme_desc),
-            keywords = listOf("festive", "christmas", "halloween", "diwali", "holi", "new year", "decoration", "snow", "snowflake"),
+            keywords = listOf("festive", "christmas", "new year", "decoration", "snow", "snowflake"),
             icon = Icons.Default.Celebration,
             route = SettingsRoutes.EXPERIMENTAL_FEATURES,
             parentScreen = "Experimental"

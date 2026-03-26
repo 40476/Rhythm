@@ -169,11 +169,15 @@ fun AlbumBottomSheet(
     val sortedSongs = remember(album.songs, sortOrder) {
         when (sortOrder) {
             AlbumSortOrder.TRACK_NUMBER -> album.songs.sortedWith { a, b ->
-                when {
-                    a.trackNumber > 0 && b.trackNumber > 0 -> a.trackNumber.compareTo(b.trackNumber)
-                    a.trackNumber > 0 -> -1
-                    b.trackNumber > 0 -> 1
-                    else -> a.title.compareTo(b.title, ignoreCase = true)
+                if (a.discNumber != b.discNumber) {
+                    a.discNumber.compareTo(b.discNumber)
+                } else {
+                    when {
+                        a.trackNumber > 0 && b.trackNumber > 0 -> a.trackNumber.compareTo(b.trackNumber)
+                        a.trackNumber > 0 -> -1
+                        b.trackNumber > 0 -> 1
+                        else -> a.title.compareTo(b.title, ignoreCase = true)
+                    }
                 }
             }
             AlbumSortOrder.TITLE_ASC -> album.songs.sortedBy { it.title.lowercase() }

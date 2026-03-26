@@ -24,7 +24,8 @@ data class Song(
     val bitrate: Int? = null, // Bitrate in bps
     val sampleRate: Int? = null, // Sample rate in Hz
     val channels: Int? = null, // Number of audio channels (1=mono, 2=stereo, 6=5.1, etc.)
-    val codec: String? = null // Audio codec (AAC, MP3, FLAC, etc.)
+    val codec: String? = null, // Audio codec (AAC, MP3, FLAC, etc.)
+    val discNumber: Int = 1 // Multi-disc support
 ) : Parcelable {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -49,6 +50,7 @@ data class Song(
         if (!Objects.equals(sampleRate, other.sampleRate)) return false
         if (!Objects.equals(channels, other.channels)) return false
         if (!Objects.equals(codec, other.codec)) return false
+        if (discNumber != other.discNumber) return false
 
         return true
     }
@@ -71,7 +73,8 @@ data class Song(
             bitrate,
             sampleRate,
             channels,
-            codec
+            codec,
+            discNumber
         )
     }
 }

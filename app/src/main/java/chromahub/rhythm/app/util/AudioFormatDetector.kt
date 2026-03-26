@@ -83,6 +83,10 @@ object AudioFormatDetector {
      * For lossless audio, ALWAYS recalculate to ensure accuracy
      */
     private fun enhanceBitDepthFromSong(formatInfo: AudioFormatInfo, song: Song): AudioFormatInfo {
+        if (formatInfo.bitDepth > 0 && formatInfo.isLossless) {
+            Log.d(TAG, "Keeping precise bit depth (${formatInfo.bitDepth}-bit) over heuristic.")
+            return formatInfo
+        }
         val bitrate = song.bitrate ?: 0
         val sampleRate = song.sampleRate ?: formatInfo.sampleRateHz
         val channels = song.channels ?: formatInfo.channelCount
@@ -284,6 +288,9 @@ object AudioFormatDetector {
             
             val mime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
             val sampleRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull() ?: 0
+            val bitDepth = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)?.toIntOrNull() ?: 0
+            } else 0
             
             // Try to detect codec from file path or mime type
             val codec = when {
@@ -304,6 +311,7 @@ object AudioFormatDetector {
                 isDolby = false,
                 isDTS = false,
                 isHiRes = isHiRes,
+                bitDepth = bitDepth,
                 sampleRateHz = sampleRate,
                 formatName = codec
             )

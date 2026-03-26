@@ -465,7 +465,6 @@ class MusicRepository(context: Context) {
         val errors = mutableListOf<Pair<Int, Exception>>()
         val seenIds = mutableSetOf<String>()
         val seenPaths = mutableSetOf<String>()
-        val seenContentKeys = mutableSetOf<String>() // title+artist+duration key for content-based dedup
         var duplicatesFound = 0
         var filteredByFormat = 0
         var filteredByQuality = 0
@@ -569,7 +568,8 @@ class MusicRepository(context: Context) {
                         size = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE),
                         // GENRE was added to MediaStore in API 30; use getColumnIndex (may be -1 on Android 8/9)
                         genre = cursor.getColumnIndex(MediaStore.Audio.Media.GENRE),
-                        albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST) // May be -1 on older devices
+                        albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST), // May be -1 on older devices
+                        discNumber = cursor.getColumnIndex("disc_number")
                     )
                 } catch (e: IllegalArgumentException) {
                     Log.e(TAG, "Required column not found in MediaStore on Android ${Build.VERSION.SDK_INT}", e)
@@ -618,15 +618,7 @@ class MusicRepository(context: Context) {
                                 seenPaths.add(path)
                             }
 
-                            // Content-based duplicate detection (title+artist+duration)
-                            val contentKey = "${song.title.lowercase().trim()}|${song.artist.lowercase().trim()}|${song.duration}"
-                            if (seenContentKeys.contains(contentKey)) {
-                                Log.d(TAG, "Skipping content duplicate: ${song.title} by ${song.artist}")
-                                duplicatesFound++
-                                processedCount++
-                                continue
-                            }
-                            seenContentKeys.add(contentKey)
+                            // Duration filtering (quality check)
                             
                             // Duration filtering (quality check)
                             if (minimumDuration > 0 && song.duration < minimumDuration) {
@@ -767,7 +759,8 @@ class MusicRepository(context: Context) {
                         size = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE),
                         // GENRE column is optional; not available on all Android versions (pre-API 30)
                         genre = cursor.getColumnIndex(MediaStore.Audio.Media.GENRE),
-                        albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST)
+                        albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST),
+                        discNumber = cursor.getColumnIndex("disc_number")
                     )
                 } catch (e: IllegalArgumentException) {
                     Log.e(TAG, "Required column not found in MediaStore", e)
@@ -838,7 +831,8 @@ class MusicRepository(context: Context) {
         val dateAdded: Int,
         val size: Int,
         val genre: Int,
-        val albumArtist: Int // May be -1 if not available on older devices
+        val albumArtist: Int, // May be -1 if not available on older devices
+        val discNumber: Int
     )
     
     private fun createSongFromCursor(cursor: android.database.Cursor, indices: ColumnIndices, appSettings: AppSettings = AppSettings.getInstance(context)): Song? {
@@ -858,6 +852,12 @@ class MusicRepository(context: Context) {
             // MediaStore encodes disc number in track: e.g. 1001 = disc 1, track 1.
             // Extract the actual track number by taking modulo 1000.
             val track = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack
+            
+            // Extract disc number natively or fallback to track offset logic
+            val fallbackDiscInfo = if (rawTrack >= 1000) rawTrack / 1000 else 1
+            val discNumber = if (indices.discNumber >= 0) {
+                cursor.getInt(indices.discNumber).takeIf { it > 0 } ?: fallbackDiscInfo
+            } else fallbackDiscInfo
             val year = cursor.getInt(indices.year)
             val dateAdded = cursor.getLong(indices.dateAdded) * 1000L
             val size = cursor.getLong(indices.size)
@@ -919,7 +919,13 @@ class MusicRepository(context: Context) {
 
             // Load cached genre if available
             val cachedGenre = try {
-                genrePrefs.getString("genre_$id", null)?.takeIf { it.isNotBlank() }
+                genrePrefs.getString("genre_$id", null)
+                    ?.trim()
+                    ?.takeIf {
+                        it.isNotBlank() &&
+                            !it.equals("unknown", ignoreCase = true) &&
+                            it != "-"
+                    }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load cached genre for song ID $id", e)
                 null
@@ -948,7 +954,8 @@ class MusicRepository(context: Context) {
                 bitrate = null, // Will be extracted lazily when needed
                 sampleRate = null,
                 channels = null,
-                codec = null
+                codec = null,
+                discNumber = discNumber
             )
         } catch (e: Exception) {
             Log.w(TAG, "Error creating song from cursor", e)
@@ -2024,7 +2031,26 @@ class MusicRepository(context: Context) {
         return try {
             Log.d(TAG, "===== GET EMBEDDED LYRICS START: $songUri =====")
             
-            // Primary method: Direct ID3v2 tag parsing (for MP3)
+            // Primary method: jaudiotagger (supports robust extraction for multiple formats directly)
+            val filePath = getFilePathFromUri(songUri)
+            if (filePath != null) {
+                try {
+                    val audioFile = org.jaudiotagger.audio.AudioFileIO.read(java.io.File(filePath))
+                    val tag = audioFile.tag
+                    if (tag != null) {
+                        val lyrics = tag.getFirst(org.jaudiotagger.tag.FieldKey.LYRICS)
+                        if (!lyrics.isNullOrBlank()) {
+                            Log.d(TAG, "===== FOUND LYRICS VIA JAUDIOTAGGER =====")
+                            val parsed = parseLyricsData(lyrics)
+                            if (parsed != null) return parsed
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "===== JAUDIOTAGGER LYRICS EXTRACTION FAILED: ${e.message} =====")
+                }
+            }
+            
+            // Secondary method: Direct ID3v2 tag parsing (for MP3)
             val id3Lyrics = extractLyricsFromID3v2(songUri)
             if (id3Lyrics != null) {
                 Log.d(TAG, "===== FOUND LYRICS VIA ID3V2 =====")
@@ -4328,12 +4354,31 @@ class MusicRepository(context: Context) {
                         val contentUri = song.uri
                         val genre = getGenreForSong(context, contentUri, songId.toInt())
 
-                        if (genre != null && genre.isNotBlank() && !genre.equals("unknown", ignoreCase = true)) {
+                        val cacheKey = "genre_$songId"
+                        val existingCachedGenre = try {
+                            genrePrefs.getString(cacheKey, null)
+                                ?.trim()
+                                ?.takeIf {
+                                    it.isNotBlank() &&
+                                        !it.equals("unknown", ignoreCase = true) &&
+                                        it != "-"
+                                }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to read existing genre cache for song ID $songId", e)
+                            null
+                        }
+
+                        if (existingCachedGenre != null) {
+                            // Keep previously cached valid genre (e.g., user-edited) and avoid overwriting it
+                            val updatedSong = song.copy(genre = existingCachedGenre)
+                            updatedSongs.add(updatedSong)
+                            Log.d(TAG, "Keeping existing cached genre '$existingCachedGenre' for song ID $songId")
+                        } else if (genre != null && genre.isNotBlank() && !genre.equals("unknown", ignoreCase = true)) {
                             val updatedSong = song.copy(genre = genre)
                             updatedSongs.add(updatedSong)
                             // Cache the detected genre using async apply() to prevent blocking
                             try {
-                                genrePrefs.edit().putString("genre_$songId", genre).apply()
+                                genrePrefs.edit().putString(cacheKey, genre).apply()
                                 Log.d(TAG, "Detected and cached genre '$genre' for song ID $songId: ${song.title}")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to cache genre for song ID $songId", e)
@@ -4344,7 +4389,7 @@ class MusicRepository(context: Context) {
                             val updatedSong = song.copy(genre = "-")
                             updatedSongs.add(updatedSong)
                             try {
-                                genrePrefs.edit().putString("genre_$songId", "-").apply()
+                                genrePrefs.edit().putString(cacheKey, "-").apply()
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to cache negative genre sentinel", e)
                             }

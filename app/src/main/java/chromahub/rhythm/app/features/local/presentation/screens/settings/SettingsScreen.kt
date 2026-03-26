@@ -190,6 +190,7 @@ fun SettingsScreen(
     val updatesEnabled by appSettings.updatesEnabled.collectAsState()
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsState()
     val useSystemVolume by appSettings.useSystemVolume.collectAsState()
+    val stopPlaybackOnZeroVolume by appSettings.stopPlaybackOnZeroVolume.collectAsState()
     val audioNormalization by appSettings.audioNormalization.collectAsState()
     val replayGain by appSettings.replayGain.collectAsState()
     val resumeOnDeviceReconnect by appSettings.resumeOnDeviceReconnect.collectAsState()
@@ -294,6 +295,13 @@ fun SettingsScreen(
                         context.getString(R.string.settings_system_volume_desc), 
                         toggleState = useSystemVolume,
                         onToggleChange = { appSettings.setUseSystemVolume(it) }
+                    ))
+                    add(SettingItem(
+                        RhythmIcons.Player.Stop,
+                        context.getString(R.string.settings_stop_playback_on_zero_volume),
+                        context.getString(R.string.settings_stop_playback_on_zero_volume_desc),
+                        toggleState = stopPlaybackOnZeroVolume,
+                        onToggleChange = { appSettings.setStopPlaybackOnZeroVolume(it) }
                     ))
                     add(SettingItem(
                         RhythmIcons.Devices.Bluetooth,

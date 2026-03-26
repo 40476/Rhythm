@@ -109,6 +109,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_LAST_AUDIO_DEVICE = "last_audio_device"
         private const val KEY_AUTO_CONNECT_DEVICE = "auto_connect_device"
         private const val KEY_USE_SYSTEM_VOLUME = "use_system_volume"
+        private const val KEY_STOP_PLAYBACK_ON_ZERO_VOLUME = "stop_playback_on_zero_volume"
         private const val KEY_DISMISSED_AUTOEQ_SUGGESTIONS = "dismissed_autoeq_suggestions"
         
         // Equalizer Settings
@@ -285,6 +286,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SHUFFLE_USES_EXOPLAYER = "shuffle_uses_exoplayer"
         private const val KEY_AUTO_ADD_TO_QUEUE = "auto_add_to_queue"
         private const val KEY_CLEAR_QUEUE_ON_NEW_SONG = "clear_queue_on_new_song"
+        private const val KEY_HIDE_PLAYED_SONGS_IN_QUEUE = "hide_played_songs_in_queue"
         private const val KEY_SHOW_QUEUE_DIALOG = "show_queue_dialog"
         private const val KEY_REPEAT_MODE_PERSISTENCE = "repeat_mode_persistence"
         private const val KEY_SHUFFLE_MODE_PERSISTENCE = "shuffle_mode_persistence"
@@ -299,6 +301,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SAVED_QUEUE = "saved_queue" // Queue persistence - list of song IDs
         private const val KEY_SAVED_QUEUE_INDEX = "saved_queue_index" // Current position in queue
         private const val KEY_SAVED_PLAYBACK_POSITION = "saved_playback_position" // Current playback position in ms
+        private const val KEY_HIDE_PLAYED_QUEUE_SONGS = "hide_played_queue_songs" // Hide already-played songs in queue
         
         // Widget Settings
         private const val KEY_WIDGET_SHOW_ALBUM_ART = "widget_show_album_art"
@@ -665,6 +668,9 @@ class AppSettings private constructor(context: Context) {
     private val _useSystemVolume = MutableStateFlow(prefs.getBoolean(KEY_USE_SYSTEM_VOLUME, false))
     val useSystemVolume: StateFlow<Boolean> = _useSystemVolume.asStateFlow()
     
+    private val _stopPlaybackOnZeroVolume = MutableStateFlow(prefs.getBoolean(KEY_STOP_PLAYBACK_ON_ZERO_VOLUME, false))
+    val stopPlaybackOnZeroVolume: StateFlow<Boolean> = _stopPlaybackOnZeroVolume.asStateFlow()
+    
     // Equalizer Settings
     private val _equalizerEnabled = MutableStateFlow(prefs.getBoolean(KEY_EQUALIZER_ENABLED, false))
     val equalizerEnabled: StateFlow<Boolean> = _equalizerEnabled.asStateFlow()
@@ -718,9 +724,15 @@ class AppSettings private constructor(context: Context) {
     
     private val _clearQueueOnNewSong = MutableStateFlow(prefs.getBoolean(KEY_CLEAR_QUEUE_ON_NEW_SONG, false))
     val clearQueueOnNewSong: StateFlow<Boolean> = _clearQueueOnNewSong.asStateFlow()
+
+    private val _hidePlayedSongsInQueue = MutableStateFlow(prefs.getBoolean(KEY_HIDE_PLAYED_SONGS_IN_QUEUE, false))
+    val hidePlayedSongsInQueue: StateFlow<Boolean> = _hidePlayedSongsInQueue.asStateFlow()
     
     private val _showQueueDialog = MutableStateFlow(prefs.getBoolean(KEY_SHOW_QUEUE_DIALOG, true))
     val showQueueDialog: StateFlow<Boolean> = _showQueueDialog.asStateFlow()
+    
+    private val _hidePlayedQueueSongs = MutableStateFlow(prefs.getBoolean(KEY_HIDE_PLAYED_QUEUE_SONGS, false))
+    val hidePlayedQueueSongs: StateFlow<Boolean> = _hidePlayedQueueSongs.asStateFlow()
     
     private val _repeatModePersistence = MutableStateFlow(prefs.getBoolean(KEY_REPEAT_MODE_PERSISTENCE, true))
     val repeatModePersistence: StateFlow<Boolean> = _repeatModePersistence.asStateFlow()
@@ -1544,6 +1556,11 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         _useSystemVolume.value = enable
     }
     
+    fun setStopPlaybackOnZeroVolume(enable: Boolean) {
+        prefs.edit().putBoolean(KEY_STOP_PLAYBACK_ON_ZERO_VOLUME, enable).apply()
+        _stopPlaybackOnZeroVolume.value = enable
+    }
+    
     // Equalizer Settings Methods
     fun setEqualizerEnabled(enable: Boolean) {
         prefs.edit().putBoolean(KEY_EQUALIZER_ENABLED, enable).apply()
@@ -1639,10 +1656,20 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         prefs.edit().putBoolean(KEY_CLEAR_QUEUE_ON_NEW_SONG, clearQueue).apply()
         _clearQueueOnNewSong.value = clearQueue
     }
+
+    fun setHidePlayedSongsInQueue(hidePlayedSongs: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_PLAYED_SONGS_IN_QUEUE, hidePlayedSongs).apply()
+        _hidePlayedSongsInQueue.value = hidePlayedSongs
+    }
     
     fun setShowQueueDialog(show: Boolean) {
         prefs.edit().putBoolean(KEY_SHOW_QUEUE_DIALOG, show).apply()
         _showQueueDialog.value = show
+    }
+    
+    fun setHidePlayedQueueSongs(hide: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_PLAYED_QUEUE_SONGS, hide).apply()
+        _hidePlayedQueueSongs.value = hide
     }
     
     fun setRepeatModePersistence(persist: Boolean) {
@@ -2951,6 +2978,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         _lastAudioDevice.value = prefs.getString(KEY_LAST_AUDIO_DEVICE, null)
         _autoConnectDevice.value = prefs.getBoolean(KEY_AUTO_CONNECT_DEVICE, true)
         _useSystemVolume.value = prefs.getBoolean(KEY_USE_SYSTEM_VOLUME, false)
+        _stopPlaybackOnZeroVolume.value = prefs.getBoolean(KEY_STOP_PLAYBACK_ON_ZERO_VOLUME, false)
         
         // Cache Settings
         _maxCacheSize.value = safeLong(KEY_MAX_CACHE_SIZE, 500L * 1024L * 1024L)
@@ -3665,7 +3693,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     }
     
     // Individual shape settings for each artwork target
-    private val _expressiveShapeAlbumArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_ALBUM_ART, "COOKIE_6") ?: "COOKIE_6")
+    private val _expressiveShapeAlbumArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_ALBUM_ART, "GHOSTISH") ?: "GHOSTISH")
     val expressiveShapeAlbumArt: StateFlow<String> = _expressiveShapeAlbumArt.asStateFlow()
     fun setExpressiveShapeAlbumArt(value: String) {
         _expressiveShapeAlbumArt.value = value
@@ -3676,7 +3704,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         }
     }
     
-    private val _expressiveShapePlayerArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYER_ART, "COOKIE_6") ?: "COOKIE_6")
+    private val _expressiveShapePlayerArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYER_ART, "BUN") ?: "BUN")
     val expressiveShapePlayerArt: StateFlow<String> = _expressiveShapePlayerArt.asStateFlow()
     fun setExpressiveShapePlayerArt(value: String) {
         _expressiveShapePlayerArt.value = value
@@ -3696,7 +3724,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         }
     }
     
-    private val _expressiveShapePlaylistArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYLIST_ART, "COOKIE_4") ?: "COOKIE_4")
+    private val _expressiveShapePlaylistArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYLIST_ART, "CLOVER_4_LEAF") ?: "CLOVER_4_LEAF")
     val expressiveShapePlaylistArt: StateFlow<String> = _expressiveShapePlaylistArt.asStateFlow()
     fun setExpressiveShapePlaylistArt(value: String) {
         _expressiveShapePlaylistArt.value = value
@@ -3706,7 +3734,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         }
     }
     
-    private val _expressiveShapeArtistArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_ARTIST_ART, "CIRCLE") ?: "CIRCLE")
+    private val _expressiveShapeArtistArt = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_ARTIST_ART, "PIXEL_CIRCLE") ?: "PIXEL_CIRCLE")
     val expressiveShapeArtistArt: StateFlow<String> = _expressiveShapeArtistArt.asStateFlow()
     fun setExpressiveShapeArtistArt(value: String) {
         _expressiveShapeArtistArt.value = value
@@ -3716,7 +3744,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         }
     }
     
-    private val _expressiveShapePlayerControls = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYER_CONTROLS, "CIRCLE") ?: "CIRCLE")
+    private val _expressiveShapePlayerControls = MutableStateFlow(prefs.getString(KEY_EXPRESSIVE_SHAPE_PLAYER_CONTROLS, "COOKIE_12") ?: "COOKIE_12")
     val expressiveShapePlayerControls: StateFlow<String> = _expressiveShapePlayerControls.asStateFlow()
     fun setExpressiveShapePlayerControls(value: String) {
         _expressiveShapePlayerControls.value = value
@@ -3742,12 +3770,12 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     fun applyExpressiveShapePreset(preset: String) {
         when (preset) {
             "DEFAULT" -> {
-                _expressiveShapeAlbumArt.value = "COOKIE_6"
-                _expressiveShapePlayerArt.value = "COOKIE_6"
+                _expressiveShapeAlbumArt.value = "GHOSTISH"
+                _expressiveShapePlayerArt.value = "BUN"
                 _expressiveShapeSongArt.value = "CLOVER_8_LEAF"
-                _expressiveShapePlaylistArt.value = "COOKIE_4"
-                _expressiveShapeArtistArt.value = "CIRCLE"
-                _expressiveShapePlayerControls.value = "CIRCLE"
+                _expressiveShapePlaylistArt.value = "CLOVER_4_LEAF"
+                _expressiveShapeArtistArt.value = "PIXEL_CIRCLE"
+                _expressiveShapePlayerControls.value = "COOKIE_12"
                 _expressiveShapeMiniPlayer.value = "COOKIE_4"
             }
             "FRIENDLY" -> {
@@ -3827,5 +3855,41 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
             putString(KEY_EXPRESSIVE_SHAPE_MINI_PLAYER, _expressiveShapeMiniPlayer.value)
         }.apply()
         _expressiveShapePreset.value = preset
+    }
+    
+    /**
+     * Randomize all expressive shape targets with randomly picked shapes.
+     * Sets the preset to CUSTOM after randomizing.
+     */
+    fun randomizeExpressiveShapes() {
+        val allShapes = listOf(
+            "CIRCLE", "SQUARE", "OVAL", "PILL", "DIAMOND", "TRIANGLE", "PENTAGON",
+            "FLOWER", "CLOVER_4_LEAF", "CLOVER_8_LEAF", "HEART", "BOOM", "SOFT_BOOM",
+            "BURST", "SOFT_BURST", "SUNNY", "VERY_SUNNY",
+            "COOKIE_4", "COOKIE_6", "COOKIE_7", "COOKIE_9", "COOKIE_12",
+            "GHOSTISH", "PUFFY", "PUFFY_DIAMOND", "BUN", "FAN",
+            "ARCH", "CLAM_SHELL", "GEM", "SLANTED", "PIXEL_CIRCLE", "PIXEL_TRIANGLE"
+        )
+        
+        _expressiveShapeAlbumArt.value = allShapes.random()
+        _expressiveShapePlayerArt.value = allShapes.random()
+        _expressiveShapeSongArt.value = allShapes.random()
+        _expressiveShapePlaylistArt.value = allShapes.random()
+        _expressiveShapeArtistArt.value = allShapes.random()
+        _expressiveShapePlayerControls.value = allShapes.random()
+        _expressiveShapeMiniPlayer.value = allShapes.random()
+        
+        // Save as CUSTOM preset
+        prefs.edit().apply {
+            putString(KEY_EXPRESSIVE_SHAPE_PRESET, "CUSTOM")
+            putString(KEY_EXPRESSIVE_SHAPE_ALBUM_ART, _expressiveShapeAlbumArt.value)
+            putString(KEY_EXPRESSIVE_SHAPE_PLAYER_ART, _expressiveShapePlayerArt.value)
+            putString(KEY_EXPRESSIVE_SHAPE_SONG_ART, _expressiveShapeSongArt.value)
+            putString(KEY_EXPRESSIVE_SHAPE_PLAYLIST_ART, _expressiveShapePlaylistArt.value)
+            putString(KEY_EXPRESSIVE_SHAPE_ARTIST_ART, _expressiveShapeArtistArt.value)
+            putString(KEY_EXPRESSIVE_SHAPE_PLAYER_CONTROLS, _expressiveShapePlayerControls.value)
+            putString(KEY_EXPRESSIVE_SHAPE_MINI_PLAYER, _expressiveShapeMiniPlayer.value)
+        }.apply()
+        _expressiveShapePreset.value = "CUSTOM"
     }
 }
