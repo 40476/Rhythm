@@ -68,6 +68,7 @@ import chromahub.rhythm.app.shared.data.model.LyricsData // Import LyricsData
 import chromahub.rhythm.app.util.PendingWriteRequest // Import for metadata write requests
 import chromahub.rhythm.app.util.PendingLyricsWriteRequest
 import chromahub.rhythm.app.util.QueueUtils
+import chromahub.rhythm.app.util.GenreUtils
 import chromahub.rhythm.app.shared.data.repository.PlaybackStatsRepository // Import for enhanced stats tracking
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
@@ -3377,9 +3378,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 appSettings.updateWeeklyTopArtists(currentArtists)
                 
                 // Update favorite genres
-                song.genre?.let { genre ->
-                    val genres = appSettings.favoriteGenres.value.toMutableMap()
+                val genres = appSettings.favoriteGenres.value.toMutableMap()
+                GenreUtils.splitGenres(song.genre).forEach { genre ->
                     genres[genre] = (genres[genre] ?: 0) + 1
+                }
+                if (genres != appSettings.favoriteGenres.value) {
                     appSettings.updateFavoriteGenres(genres)
                 }
                 
@@ -6346,9 +6349,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             
             // Update genre preferences
             val currentGenrePrefs = _genrePreferences.value.toMutableMap()
-            song.genre?.let { genre ->
+            GenreUtils.splitGenres(song.genre).forEach { genre ->
                 val count = currentGenrePrefs.getOrDefault(genre, 0) + 1
                 currentGenrePrefs[genre] = count
+            }
+            if (currentGenrePrefs != _genrePreferences.value) {
                 appSettings.setGenrePreferences(currentGenrePrefs)
             }
 
@@ -6390,9 +6395,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .sortedByDescending { it.value }
             .take(3)
             .map { it.key }
+        val preferredGenresSet = preferredGenres.map { it.lowercase() }.toSet()
         
         val genreBasedSongs = _songs.value.filter { song ->
-            song.genre in preferredGenres
+            GenreUtils.splitGenres(song.genre).any { it.lowercase() in preferredGenresSet }
         }
         
         // Filter out blacklisted songs

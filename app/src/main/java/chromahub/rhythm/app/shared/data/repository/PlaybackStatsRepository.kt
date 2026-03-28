@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.reflect.TypeToken
 import chromahub.rhythm.app.shared.data.model.Song
+import chromahub.rhythm.app.util.GenreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -441,21 +442,29 @@ class PlaybackStatsRepository private constructor(private val context: Context) 
             )
         }.sortedByDescending { it.totalDurationMs }.take(5)
         
-        // Top genres
-        val genreGroups = segmentsBySong.entries.groupBy { (songId, _) ->
-            songMap[songId]?.genre 
-                ?: filteredEvents.find { it.songId == songId }?.genre 
-                ?: "Unknown"
+        // Top genres (supports multi-genre tags like "Mahur, Shur")
+        val genreDurations = mutableMapOf<String, Long>()
+        val genrePlayCounts = mutableMapOf<String, Int>()
+
+        segmentsBySong.forEach { (songId, segments) ->
+            val rawGenre = songMap[songId]?.genre
+                ?: filteredEvents.find { it.songId == songId }?.genre
+            val resolvedGenres = GenreUtils.splitGenres(rawGenre).ifEmpty { listOf("Unknown") }
+            val songDuration = segments.sumOf { it.durationMs }
+            val songPlayCount = segments.size
+
+            resolvedGenres.forEach { genre ->
+                genreDurations[genre] = genreDurations.getOrDefault(genre, 0L) + songDuration
+                genrePlayCounts[genre] = genrePlayCounts.getOrDefault(genre, 0) + songPlayCount
+            }
         }
-        val totalGenrePlays = genreGroups.values.sumOf { entries -> 
-            entries.sumOf { it.value.size } 
-        }.coerceAtLeast(1)
-        val topGenres = genreGroups.map { (genre, songEntries) ->
-            val allSegments = songEntries.flatMap { it.value }
-            val playCount = allSegments.size
+
+        val totalGenrePlays = genrePlayCounts.values.sum().coerceAtLeast(1)
+        val topGenres = genreDurations.map { (genre, durationMs) ->
+            val playCount = genrePlayCounts.getOrDefault(genre, 0)
             GenrePlaybackSummary(
                 genre = genre,
-                totalDurationMs = allSegments.sumOf { it.durationMs },
+                totalDurationMs = durationMs,
                 playCount = playCount,
                 percentage = playCount.toFloat() / totalGenrePlays
             )
