@@ -2944,6 +2944,8 @@
     <string name="settings_choose_progress_style">Choose progress indicator style</string>
     <string name="settings_create_backup">Create Backup to File</string>
     <string name="settings_create_backup_desc">Export complete backup to a JSON file</string>
+    <string name="settings_backup_action_short">Backup</string>
+    <string name="settings_restore_action_short">Restore</string>
     <string name="settings_experimental">Experimental Features</string>
     <string name="settings_left_aligned">Left aligned</string>
     <string name="settings_player">Player</string>

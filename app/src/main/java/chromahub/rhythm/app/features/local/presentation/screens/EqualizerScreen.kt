@@ -345,56 +345,10 @@ fun TunerAnimatedSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val thumbColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.onPrimary
-        else 
-            MaterialTheme.colorScheme.outline,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "tuner_thumb_color"
-    )
-    
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.primary
-        else 
-            MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "tuner_track_color"
-    )
-    
-    Switch(
+    chromahub.rhythm.app.features.local.presentation.screens.settings.TunerAnimatedSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = thumbColor,
-            checkedTrackColor = trackColor,
-            checkedBorderColor = Color.Transparent,
-            uncheckedThumbColor = thumbColor,
-            uncheckedTrackColor = trackColor,
-            uncheckedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-        ),
-        thumbContent = {
-            AnimatedVisibility(
-                visible = checked,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-                exit = scaleOut(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeOut()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
+        modifier = modifier
     )
 }
 

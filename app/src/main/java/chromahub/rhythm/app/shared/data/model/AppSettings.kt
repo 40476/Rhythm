@@ -2948,21 +2948,82 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         }
         _backupLocation.value = location
     }
+
+    data class BackupRestoreSections(
+        val includeGeneralSettings: Boolean = true,
+        val includeLibraryData: Boolean = true,
+        val includeStatsAndRhythmGuard: Boolean = true
+    ) {
+        val hasAtLeastOneSectionSelected: Boolean
+            get() = includeGeneralSettings || includeLibraryData || includeStatsAndRhythmGuard
+    }
+
+    private fun isLibraryBackupKey(key: String): Boolean {
+        return key == KEY_PLAYLISTS ||
+            key == KEY_FAVORITE_SONGS ||
+            key == KEY_BLACKLISTED_SONGS ||
+            key == KEY_BLACKLISTED_FOLDERS ||
+            key == KEY_WHITELISTED_SONGS ||
+            key == KEY_WHITELISTED_FOLDERS ||
+            key == KEY_PINNED_FOLDERS
+    }
+
+    private fun isStatsAndRhythmGuardBackupKey(key: String): Boolean {
+        return key == KEY_LAST_PLAYED_TIMESTAMP ||
+            key == KEY_RECENTLY_PLAYED ||
+            key == KEY_LISTENING_TIME ||
+            key == KEY_SONGS_PLAYED ||
+            key == KEY_GENRE_PREFERENCES ||
+            key == KEY_FAVORITE_GENRES ||
+            key == KEY_DAILY_LISTENING_STATS ||
+            key == KEY_SONG_PLAY_COUNTS ||
+            key == KEY_HOME_SHOW_LISTENING_STATS ||
+            key == KEY_RHYTHM_GUARD_MODE ||
+            key == KEY_RHYTHM_GUARD_AGE ||
+            key == KEY_RHYTHM_GUARD_MANUAL_WARNINGS_ENABLED ||
+            key == KEY_RHYTHM_GUARD_MANUAL_VOLUME_THRESHOLD ||
+            key == KEY_RHYTHM_GUARD_LAST_AUTO_APPLIED_AT ||
+            key == KEY_RHYTHM_GUARD_ALERT_THRESHOLD_MINUTES ||
+            key == KEY_RHYTHM_GUARD_WARNING_TIMEOUT_MINUTES ||
+            key == KEY_RHYTHM_GUARD_BREAK_RESUME_MINUTES ||
+            key == KEY_RHYTHM_GUARD_TIMEOUT_UNTIL_MS ||
+            key == KEY_RHYTHM_GUARD_TIMEOUT_REASON ||
+            key == KEY_RHYTHM_AURA_MODE ||
+            key == KEY_RHYTHM_AURA_AGE ||
+            key.startsWith("rhythm_guard_") ||
+            key.startsWith("rhythm_aura_")
+    }
+
+    private fun shouldIncludeKeyInBackupSections(
+        key: String,
+        sections: BackupRestoreSections
+    ): Boolean {
+        return when {
+            isLibraryBackupKey(key) -> sections.includeLibraryData
+            isStatsAndRhythmGuardBackupKey(key) -> sections.includeStatsAndRhythmGuard
+            else -> sections.includeGeneralSettings
+        }
+    }
     
     /**
      * Creates a complete backup of all app data as JSON
      */
-    fun createBackup(): String {
+    fun createBackup(sections: BackupRestoreSections = BackupRestoreSections()): String {
         val backupData = mutableMapOf<String, Any?>()
         val preferencesTypes = mutableMapOf<String, String>()
+
+        val effectiveSections = if (sections.hasAtLeastOneSectionSelected) {
+            sections
+        } else {
+            BackupRestoreSections()
+        }
         
         // Get all preferences
         val allPrefs = prefs.all
         
-        // Filter out sensitive or temporary data if needed
+        // Filter based on selected backup sections.
         val filteredPrefs = allPrefs.filterKeys { key ->
-            // Include all keys for now, but you could exclude sensitive data here
-            true
+            shouldIncludeKeyInBackupSections(key, effectiveSections)
         }
         
         // Store type information for each preference
@@ -2983,10 +3044,16 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         backupData["timestamp"] = System.currentTimeMillis()
         backupData["app_version"] = "1.0.0" // You might want to get this dynamically
         backupData["backup_version"] = 2 // Increment version to handle playlist data properly
+        backupData["selected_sections"] = mapOf(
+            "general_settings" to effectiveSections.includeGeneralSettings,
+            "library_data" to effectiveSections.includeLibraryData,
+            "stats_rhythm_guard" to effectiveSections.includeStatsAndRhythmGuard
+        )
         
         // Explicitly include playlist and favorite songs data even if already in preferences
         // This ensures they are properly backed up and restored
-        try {
+        if (effectiveSections.includeLibraryData) {
+            try {
             val playlistsJson = prefs.getString(KEY_PLAYLISTS, null)
             val favoriteSongsJson = prefs.getString(KEY_FAVORITE_SONGS, null)
             
@@ -3030,8 +3097,9 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
                 backupData["pinned_folders_data"] = pinnedFoldersJson
             }
             
-        } catch (e: Exception) {
-            Log.e("AppSettings", "Error including playlist data in backup", e)
+            } catch (e: Exception) {
+                Log.e("AppSettings", "Error including playlist data in backup", e)
+            }
         }
         
         return Gson().toJson(backupData)
@@ -3040,13 +3108,33 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     /**
      * Restores app data from a backup JSON string
      */
-    fun restoreFromBackup(backupJson: String): Boolean {
+    fun restoreFromBackup(
+        backupJson: String,
+        sections: BackupRestoreSections = BackupRestoreSections()
+    ): Boolean {
         return try {
             Log.d("AppSettings", "Attempting to restore from backup...")
-            val backupData = Gson().fromJson(backupJson, Map::class.java) as Map<String, Any?>
-            val preferences = backupData["preferences"] as? Map<String, Any?> ?: return false
-            val preferencesTypes = backupData["preferences_types"] as? Map<String, String> ?: emptyMap()
+            val backupData = Gson().fromJson(backupJson, Map::class.java) as? Map<String, Any?> ?: return false
+            val preferences = (backupData["preferences"] as? Map<*, *>)
+                ?.mapNotNull { (key, value) ->
+                    (key as? String)?.let { safeKey -> safeKey to value }
+                }
+                ?.toMap()
+                ?: return false
+            val preferencesTypes = (backupData["preferences_types"] as? Map<*, *>)
+                ?.mapNotNull { (key, value) ->
+                    val safeKey = key as? String ?: return@mapNotNull null
+                    val safeValue = value as? String ?: return@mapNotNull null
+                    safeKey to safeValue
+                }
+                ?.toMap()
+                ?: emptyMap()
             val backupVersion = (backupData["backup_version"] as? Double)?.toInt() ?: 1
+
+            if (!sections.hasAtLeastOneSectionSelected) {
+                Log.w("AppSettings", "Restore skipped: no backup sections selected")
+                return false
+            }
             
             Log.d("AppSettings", "Backup version: $backupVersion")
             
@@ -3055,6 +3143,10 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
             
             // Restore all preferences with proper type handling
             preferences.forEach { (key, value) ->
+                if (!shouldIncludeKeyInBackupSections(key, sections)) {
+                    return@forEach
+                }
+
                 val originalType = preferencesTypes[key]
                 when (value) {
                     is Boolean -> editor.putBoolean(key, value)
@@ -3069,6 +3161,16 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
                     is Int -> editor.putInt(key, value)
                     is Long -> editor.putLong(key, value)
                     is String -> editor.putString(key, value)
+                    is List<*> -> {
+                        if (originalType == "StringSet") {
+                            editor.putStringSet(key, value.mapNotNull { it?.toString() }.toSet())
+                        }
+                    }
+                    is Set<*> -> {
+                        if (originalType == "StringSet") {
+                            editor.putStringSet(key, value.mapNotNull { it?.toString() }.toSet())
+                        }
+                    }
                     is Double -> {
                         // JSON deserializes numbers as Double, convert based on original type
                         when (originalType) {
@@ -3083,7 +3185,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
             }
             
             // Handle backup version 2 and above - explicit playlist data restoration
-            if (backupVersion >= 2) {
+            if (backupVersion >= 2 && sections.includeLibraryData) {
                 Log.d("AppSettings", "Restoring playlist data from backup version $backupVersion")
                 
                 // Restore playlists data explicitly
@@ -3132,7 +3234,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
                     editor.putString(KEY_PINNED_FOLDERS, pinnedFoldersData)
                     Log.d("AppSettings", "Restored pinned folders data")
                 }
-            } else {
+            } else if (backupVersion < 2) {
                 Log.d("AppSettings", "Backup version $backupVersion - using preferences-based restoration")
             }
             

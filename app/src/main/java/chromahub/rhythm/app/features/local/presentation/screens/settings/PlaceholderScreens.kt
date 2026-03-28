@@ -305,10 +305,11 @@ fun TunerAnimatedSwitch(
     modifier: Modifier = Modifier
 ) {
     val thumbColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.onPrimary
-        else 
-            MaterialTheme.colorScheme.outline,
+        targetValue = when {
+            checked && !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            checked -> MaterialTheme.colorScheme.onPrimary
+            else -> Color.White
+        },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -317,15 +318,30 @@ fun TunerAnimatedSwitch(
     )
     
     val trackColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.primary
-        else 
-            MaterialTheme.colorScheme.surfaceContainerHighest,
+        targetValue = when {
+            !enabled && checked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)
+            !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+            checked -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.82f)
+        },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "tuner_track_color"
+    )
+
+    val iconTint by animateColorAsState(
+        targetValue = if (checked) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onPrimary.copy(alpha = if (enabled) 1f else 0.55f)
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "tuner_switch_icon_tint"
     )
     
     Switch(
@@ -340,18 +356,25 @@ fun TunerAnimatedSwitch(
             uncheckedThumbColor = thumbColor,
             uncheckedTrackColor = trackColor,
             uncheckedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+            disabledCheckedThumbColor = thumbColor,
+            disabledCheckedTrackColor = trackColor,
+            disabledUncheckedThumbColor = thumbColor,
+            disabledUncheckedTrackColor = trackColor,
         ),
         thumbContent = {
-            AnimatedVisibility(
-                visible = checked,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-                exit = scaleOut(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeOut()
-            ) {
+            AnimatedContent(
+                targetState = checked,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(140)) + scaleIn(initialScale = 0.85f)) togetherWith
+                        (fadeOut(animationSpec = tween(120)) + scaleOut(targetScale = 0.85f))
+                },
+                label = "tuner_switch_icon"
+            ) { isChecked ->
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = if (isChecked) Icons.Default.Check else Icons.Default.Close,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    modifier = Modifier.size(14.dp),
+                    tint = iconTint
                 )
             }
         }
@@ -6155,7 +6178,7 @@ private fun FestivalSelectionBottomSheet(
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        val contentHorizontalPadding = 20.dp
+        val contentHorizontalPadding = 24.dp
 
         Column(
             modifier = Modifier
@@ -8416,12 +8439,35 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
 
     // Local states
     var isCreatingBackup by remember { mutableStateOf(false) }
+    var isPreparingRestore by remember { mutableStateOf(false) }
     var isRestoringFromFile by remember { mutableStateOf(false) }
     var isRestoringFromClipboard by remember { mutableStateOf(false) }
-    var showBackupSuccess by remember { mutableStateOf(false) }
-    var showRestoreSuccess by remember { mutableStateOf(false) }
-    var showError by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var showBackupSelectionSheet by remember { mutableStateOf(false) }
+    var showRestoreSelectionSheet by remember { mutableStateOf(false) }
+    var pendingRestorePayload by remember { mutableStateOf<String?>(null) }
+    var pendingBackupSections by remember { mutableStateOf(AppSettings.BackupRestoreSections()) }
+    var backupSections by remember { mutableStateOf(AppSettings.BackupRestoreSections()) }
+    var restoreSections by remember { mutableStateOf(AppSettings.BackupRestoreSections()) }
+    var resultSheetState by remember { mutableStateOf<BackupRestoreResultState?>(null) }
+
+    val isBusy = isCreatingBackup || isPreparingRestore || isRestoringFromFile || isRestoringFromClipboard
+
+    fun selectedSectionsSummary(sections: AppSettings.BackupRestoreSections): String {
+        val lines = mutableListOf<String>()
+        if (sections.includeGeneralSettings) lines += "• General app settings"
+        if (sections.includeLibraryData) lines += "• Playlists, favorites, and folder lists"
+        if (sections.includeStatsAndRhythmGuard) lines += "• Listening stats and Rhythm Guard data"
+        return lines.joinToString("\n")
+    }
+
+    fun showError(message: String) {
+        resultSheetState = BackupRestoreResultState(
+            title = context.getString(R.string.ui_error),
+            message = message,
+            isError = true,
+            requiresRestart = false
+        )
+    }
 
     // File picker launcher for backup export
     val backupLocationLauncher = rememberLauncherForActivityResult(
@@ -8435,29 +8481,37 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                         HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.LongPress)
 
                         musicViewModel.ensurePlaylistsSaved()
-                        val backupJson = appSettings.createBackup()
+                        val backupJson = appSettings.createBackup(pendingBackupSections)
 
-                        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                            outputStream.write(backupJson.toByteArray())
-                            outputStream.flush()
+                        val outputStream = context.contentResolver.openOutputStream(uri)
+                            ?: throw IllegalStateException("Unable to open backup destination")
+                        outputStream.use { stream ->
+                            stream.write(backupJson.toByteArray())
+                            stream.flush()
                         }
 
                         appSettings.setLastBackupTimestamp(System.currentTimeMillis())
                         appSettings.setBackupLocation(uri.toString())
 
-                        showBackupSuccess = true
+                        resultSheetState = BackupRestoreResultState(
+                            title = context.getString(R.string.settings_backup_created),
+                            message = "Backup completed successfully.\n\nIncluded sections:\n${selectedSectionsSummary(pendingBackupSections)}",
+                            isError = false,
+                            requiresRestart = false
+                        )
 
                         // Also copy to clipboard
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Rhythm Backup", backupJson)
                         clipboard.setPrimaryClip(clip)
                     } catch (e: Exception) {
-                        errorMessage = "Failed to create backup: ${e.message}"
-                        showError = true
+                        showError("Failed to create backup: ${e.message}")
                     } finally {
                         isCreatingBackup = false
                     }
                 }
+            } ?: run {
+                isCreatingBackup = false
             }
         } else {
             isCreatingBackup = false
@@ -8479,24 +8533,20 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                         val backupJson = inputStream?.bufferedReader()?.use { it.readText() }
 
                         if (!backupJson.isNullOrEmpty()) {
-                            if (appSettings.restoreFromBackup(backupJson)) {
-                                musicViewModel.reloadPlaylistsFromSettings()
-                                showRestoreSuccess = true
-                            } else {
-                                errorMessage = "Invalid backup format or corrupted data"
-                                showError = true
-                            }
+                            pendingRestorePayload = backupJson
+                            restoreSections = AppSettings.BackupRestoreSections()
+                            showRestoreSelectionSheet = true
                         } else {
-                            errorMessage = "Unable to read the backup file"
-                            showError = true
+                            showError("Unable to read the backup file")
                         }
                     } catch (e: Exception) {
-                        errorMessage = "Failed to restore from file: ${e.message}"
-                        showError = true
+                        showError("Failed to restore from file: ${e.message}")
                     } finally {
                         isRestoringFromFile = false
                     }
                 }
+            } ?: run {
+                isRestoringFromFile = false
             }
         } else {
             isRestoringFromFile = false
@@ -8514,25 +8564,46 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = clipboard.primaryClip
                 if (clip != null && clip.itemCount > 0) {
-                    val backupJson = clip.getItemAt(0).text.toString()
-
-                    if (appSettings.restoreFromBackup(backupJson)) {
-                        // Reload playlists from restored settings
-                        musicViewModel.reloadPlaylistsFromSettings()
-                        showRestoreSuccess = true
+                    val backupJson = clip.getItemAt(0).coerceToText(context)?.toString()
+                    if (!backupJson.isNullOrBlank()) {
+                        pendingRestorePayload = backupJson
+                        restoreSections = AppSettings.BackupRestoreSections()
+                        showRestoreSelectionSheet = true
                     } else {
-                        errorMessage = "Invalid backup format or corrupted data"
-                        showError = true
+                        showError("Clipboard does not contain readable backup text")
                     }
                 } else {
-                    errorMessage = "No backup data found in clipboard. Please copy a backup first."
-                    showError = true
+                    showError("No backup data found in clipboard. Please copy a backup first.")
                 }
             } catch (e: Exception) {
-                errorMessage = "Failed to restore backup: ${e.message}"
-                showError = true
+                showError("Failed to restore backup: ${e.message}")
             } finally {
                 isRestoringFromClipboard = false
+            }
+        }
+    }
+
+    fun applyRestoreWithSections(backupJson: String, sections: AppSettings.BackupRestoreSections) {
+        scope.launch {
+            try {
+                isPreparingRestore = true
+                HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.LongPress)
+
+                if (appSettings.restoreFromBackup(backupJson, sections)) {
+                    musicViewModel.reloadPlaylistsFromSettings()
+                    resultSheetState = BackupRestoreResultState(
+                        title = context.getString(R.string.settings_restore_completed),
+                        message = "Restore completed successfully.\n\nRestored sections:\n${selectedSectionsSummary(sections)}",
+                        isError = false,
+                        requiresRestart = true
+                    )
+                } else {
+                    showError("Invalid backup format, no sections selected, or corrupted data")
+                }
+            } catch (e: Exception) {
+                showError("Failed to restore backup: ${e.message}")
+            } finally {
+                isPreparingRestore = false
             }
         }
     }
@@ -8709,14 +8780,10 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                             context.getString(R.string.settings_create_backup),
                             context.getString(R.string.settings_create_backup_desc),
                             onClick = {
-                                if (!isCreatingBackup) {
+                                if (!isBusy) {
                                     HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                                        addCategory(Intent.CATEGORY_OPENABLE)
-                                        type = "application/json"
-                                        putExtra(Intent.EXTRA_TITLE, "rhythm_backup_${SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(Date())}.json")
-                                    }
-                                    backupLocationLauncher.launch(intent)
+                                    backupSections = AppSettings.BackupRestoreSections()
+                                    showBackupSelectionSheet = true
                                 }
                             }
                         )
@@ -8730,7 +8797,7 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                             context.getString(R.string.settings_restore_clipboard),
                             context.getString(R.string.settings_restore_clipboard_desc),
                             onClick = {
-                                if (!isRestoringFromClipboard && !isRestoringFromFile && !isCreatingBackup) {
+                                if (!isBusy) {
                                     HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
                                     restoreFromClipboard()
                                 }
@@ -8741,8 +8808,9 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                             context.getString(R.string.settings_restore_file),
                             context.getString(R.string.settings_restore_file_desc),
                             onClick = {
-                                if (!isRestoringFromFile && !isRestoringFromClipboard && !isCreatingBackup) {
+                                if (!isBusy) {
                                     HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
+                                    isRestoringFromFile = true
                                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                                         addCategory(Intent.CATEGORY_OPENABLE)
                                         type = "application/json"
@@ -8835,72 +8903,72 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
         }
     }
 
-    // Success/Error Dialogs
-    if (showBackupSuccess) {
-        AlertDialog(
-            onDismissRequest = { showBackupSuccess = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = { Text(context.getString(R.string.settings_backup_created)) },
-            text = {
-                Text("Your complete Rhythm backup has been created including:\n\n" +
-                     "• All app settings and preferences\n" +
-                     "• Your playlists and favorite songs\n" +
-                     "• Blacklisted/whitelisted songs and folders\n" +
-                     "• Pinned folders and library customization\n" +
-                     "• Theme settings (colors, fonts, album art colors)\n" +
-                     "• Audio preferences and API settings\n" +
-                     "• Recently played history and statistics\n\n" +
-                     "The backup has been saved and copied to your clipboard for easy sharing.")
-            },
-            confirmButton = {
-                Button(onClick = {
-                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                    showBackupSuccess = false
-                }) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(context.getString(R.string.ui_ok))
+    if (showBackupSelectionSheet) {
+        BackupRestoreSectionPickerBottomSheet(
+            title = "Choose Backup Sections",
+            subtitle = "Select what to include in this backup file.",
+            confirmLabel = context.getString(R.string.settings_backup_action_short),
+            confirmIcon = Icons.Default.Backup,
+            sections = backupSections,
+            isProcessing = isCreatingBackup,
+            onSectionsChange = { backupSections = it },
+            onDismiss = { showBackupSelectionSheet = false },
+            onConfirm = { selectedSections ->
+                if (!selectedSections.hasAtLeastOneSectionSelected) {
+                    showError("Choose at least one section to create a backup")
+                    return@BackupRestoreSectionPickerBottomSheet
                 }
-            },
-            shape = RoundedCornerShape(24.dp)
+
+                pendingBackupSections = selectedSections
+                showBackupSelectionSheet = false
+
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/json"
+                    putExtra(
+                        Intent.EXTRA_TITLE,
+                        "rhythm_backup_${SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(Date())}.json"
+                    )
+                }
+                backupLocationLauncher.launch(intent)
+            }
         )
     }
 
-    if (showRestoreSuccess) {
-        AlertDialog(
-            onDismissRequest = { showRestoreSuccess = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
+    if (showRestoreSelectionSheet && pendingRestorePayload != null) {
+        BackupRestoreSectionPickerBottomSheet(
+            title = "Choose Restore Sections",
+            subtitle = "Select which sections from the backup should be restored.",
+            confirmLabel = context.getString(R.string.settings_restore_action_short),
+            confirmIcon = Icons.Default.SystemUpdateAlt,
+            sections = restoreSections,
+            isProcessing = isPreparingRestore,
+            onSectionsChange = { restoreSections = it },
+            onDismiss = {
+                showRestoreSelectionSheet = false
+                pendingRestorePayload = null
             },
-            title = { Text(context.getString(R.string.settings_restore_completed)) },
-            text = {
-                Text("Your Rhythm data has been restored successfully including:\n\n" +
-                     "• All app settings and preferences\n" +
-                     "• Your playlists and favorite songs\n" +
-                     "• Blacklisted songs and folders\n" +
-                     "• Theme and audio preferences\n\n" +
-                     "Please restart the app for all changes to take full effect.")
-            },
-            confirmButton = {
-                Button(onClick = {
-                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                    showRestoreSuccess = false
+            onConfirm = { selectedSections ->
+                if (!selectedSections.hasAtLeastOneSectionSelected) {
+                    showError("Choose at least one section to restore")
+                    return@BackupRestoreSectionPickerBottomSheet
+                }
 
-                    // Restart the app
+                val backupJson = pendingRestorePayload ?: return@BackupRestoreSectionPickerBottomSheet
+                showRestoreSelectionSheet = false
+                pendingRestorePayload = null
+                applyRestoreWithSections(backupJson, selectedSections)
+            }
+        )
+    }
+
+    resultSheetState?.let { state ->
+        BackupRestoreResultBottomSheet(
+            state = state,
+            onDismiss = { resultSheetState = null },
+            onPrimaryAction = {
+                resultSheetState = null
+                if (state.requiresRestart) {
                     val packageManager = context.packageManager
                     val intent = packageManager.getLaunchIntentForPackage(context.packageName)
                     val componentName = intent?.component
@@ -8908,48 +8976,490 @@ fun BackupRestoreSettingsScreen(onBackClick: () -> Unit) {
                     context.startActivity(mainIntent)
                     (context as? Activity)?.finish()
                     Runtime.getRuntime().exit(0)
-                }) {
-                    Icon(
-                        imageVector = Icons.Rounded.RestartAlt,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(context.getString(R.string.settings_restart_now))
                 }
-            },
-            shape = RoundedCornerShape(24.dp)
+            }
         )
     }
+}
 
-    if (showError) {
-        AlertDialog(
-            onDismissRequest = { showError = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+private data class BackupRestoreResultState(
+    val title: String,
+    val message: String,
+    val isError: Boolean,
+    val requiresRestart: Boolean
+)
+
+@Composable
+private fun BackupRestoreSectionPickerBottomSheet(
+    title: String,
+    subtitle: String,
+    confirmLabel: String,
+    confirmIcon: ImageVector,
+    sections: AppSettings.BackupRestoreSections,
+    isProcessing: Boolean,
+    onSectionsChange: (AppSettings.BackupRestoreSections) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (AppSettings.BackupRestoreSections) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    var showContent by remember { mutableStateOf(false) }
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (showContent) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "backup_restore_picker_alpha"
+    )
+
+    LaunchedEffect(Unit) {
+        delay(80)
+        showContent = true
+    }
+
+    val selectedSectionCount = listOf(
+        sections.includeGeneralSettings,
+        sections.includeLibraryData,
+        sections.includeStatsAndRhythmGuard
+    ).count { it }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.primary) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
+                .graphicsLayer(alpha = contentAlpha)
+        ) {
+            StandardBottomSheetHeader(
+                title = title,
+                subtitle = subtitle,
+                visible = showContent,
+                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
-            },
-            title = { Text(context.getString(R.string.ui_error)) },
-            text = { Text(errorMessage) },
-            confirmButton = {
-                Button(onClick = {
-                    HapticUtils.performHapticFeedback(context, haptics, HapticFeedbackType.TextHandleMove)
-                    showError = false
-                }) {
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "Choose sections",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "$selectedSectionCount of 3 enabled",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = {
+                                onSectionsChange(
+                                    sections.copy(
+                                        includeGeneralSettings = true,
+                                        includeLibraryData = true,
+                                        includeStatsAndRhythmGuard = true
+                                    )
+                                )
+                            },
+                            enabled = !isProcessing,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                        ) {
+                            Text("All", style = MaterialTheme.typography.labelLarge)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                onSectionsChange(
+                                    sections.copy(
+                                        includeGeneralSettings = false,
+                                        includeLibraryData = false,
+                                        includeStatsAndRhythmGuard = false
+                                    )
+                                )
+                            },
+                            enabled = !isProcessing,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                        ) {
+                            Text("None", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BackupRestoreSectionRow(
+                    icon = Icons.Default.Settings,
+                    title = "General Settings",
+                    description = "Theme, player, UI, API, and app preferences.",
+                    checked = sections.includeGeneralSettings,
+                    badge = "Core",
+                    onCheckedChange = { onSectionsChange(sections.copy(includeGeneralSettings = it)) }
+                )
+
+                BackupRestoreSectionRow(
+                    icon = Icons.Default.LibraryMusic,
+                    title = "Library Data",
+                    description = "Playlists, favorites, blacklist/whitelist, pinned folders.",
+                    checked = sections.includeLibraryData,
+                    badge = "Collection",
+                    onCheckedChange = { onSectionsChange(sections.copy(includeLibraryData = it)) }
+                )
+
+                BackupRestoreSectionRow(
+                    icon = Icons.Default.AutoGraph,
+                    title = "Stats & Rhythm Guard",
+                    description = "Play counts, daily stats, genres, and Rhythm Guard configuration.",
+                    checked = sections.includeStatsAndRhythmGuard,
+                    badge = "Insight",
+                    onCheckedChange = { onSectionsChange(sections.copy(includeStatsAndRhythmGuard = it)) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    enabled = !isProcessing,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
                     Icon(
-                        imageVector = Icons.Filled.Close,
+                        imageVector = Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("OK")
+                    Text(context.getString(R.string.ui_cancel))
                 }
-            },
-            shape = RoundedCornerShape(24.dp)
+
+                Button(
+                    onClick = { onConfirm(sections) },
+                    modifier = Modifier.weight(1f),
+                    enabled = sections.hasAtLeastOneSectionSelected && !isProcessing,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (isProcessing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = confirmIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(confirmLabel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupRestoreSectionRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    badge: String,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = badge,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                TunerAnimatedSwitch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (checked) "Included" else "Excluded",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupRestoreResultBottomSheet(
+    state: BackupRestoreResultState,
+    onDismiss: () -> Unit,
+    onPrimaryAction: () -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showContent by remember { mutableStateOf(false) }
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (showContent) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "backup_restore_result_alpha"
+    )
+
+    LaunchedEffect(Unit) {
+        delay(80)
+        showContent = true
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.primary) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
+                .graphicsLayer(alpha = contentAlpha)
+        ) {
+            StandardBottomSheetHeader(
+                title = state.title,
+                subtitle = if (state.requiresRestart) {
+                    "Restart is required to finish applying changes"
+                } else if (state.isError) {
+                    "Action could not be completed"
+                } else {
+                    "Backup and restore status"
+                },
+                visible = showContent,
+                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (state.isError) {
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                    }
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (state.isError) {
+                        MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                    }
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (state.isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (state.isError) Icons.Default.Close else Icons.Default.Check,
+                                contentDescription = null,
+                                tint = if (state.isError) {
+                                    MaterialTheme.colorScheme.onError
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimary
+                                },
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state.isError) {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (!state.requiresRestart) {
+                    FilledTonalButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(context.getString(R.string.ui_close))
+                    }
+                }
+                Button(
+                    onClick = onPrimaryAction,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        imageVector = if (state.requiresRestart) {
+                            Icons.Default.RestartAlt
+                        } else if (state.isError) {
+                            Icons.Default.Refresh
+                        } else {
+                            Icons.Default.Check
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (state.requiresRestart) {
+                            context.getString(R.string.settings_restart_now)
+                        } else {
+                            context.getString(R.string.ui_ok)
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -12053,7 +12563,7 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         ) {
-            val festiveContentPadding = 20.dp
+            val festiveContentPadding = 24.dp
 
             LazyColumn(
                 modifier = Modifier
@@ -12068,236 +12578,215 @@ fun ThemeCustomizationSettingsScreen(onBackClick: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
                     )
                 }
-                
-                // Festival Selection
+
                 item {
-                    Text(
-                        text = context.getString(R.string.settings_select_festival),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(horizontal = festiveContentPadding)
-                            .padding(bottom = 8.dp)
-                    )
-                }
-                
-                item {
-                    val festivals = listOf(
-                        "CHRISTMAS" to context.getString(R.string.settings_festival_christmas),
-                        "NEW_YEAR" to context.getString(R.string.settings_festival_new_year)
-                    )
-                    
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(horizontal = festiveContentPadding)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = festiveContentPadding)
                     ) {
-                        festivals.forEach { (id, name) ->
-                            val isSelected = id == festiveThemeType
-                            Card(
-                                onClick = {
-                                    HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
-                                    appSettings.setFestiveThemeType(id)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surfaceContainerHigh
-                                ),
-                                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected)
-                                            MaterialTheme.colorScheme.onPrimaryContainer
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = context.getString(R.string.settings_select_festival),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        val festivals = listOf(
+                            "CHRISTMAS" to context.getString(R.string.settings_festival_christmas),
+                            "NEW_YEAR" to context.getString(R.string.settings_festival_new_year)
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            festivals.forEach { (id, name) ->
+                                val isSelected = id == festiveThemeType
+                                Card(
+                                    onClick = {
+                                        HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.TextHandleMove)
+                                        appSettings.setFestiveThemeType(id)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isSelected)
+                                            MaterialTheme.colorScheme.primaryContainer
                                         else
-                                            MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Filled.CheckCircle,
-                                            contentDescription = context.getString(R.string.ui_selected),
-                                            
-                                            modifier = Modifier.size(24.dp)
+                                            MaterialTheme.colorScheme.surfaceContainerHigh
+                                    ),
+                                    border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected)
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            else
+                                                MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f)
                                         )
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.CheckCircle,
+                                                contentDescription = context.getString(R.string.ui_selected),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                }
-                
-                // Decoration Intensity
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = context.getString(R.string.settings_decoration_intensity),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(horizontal = festiveContentPadding)
-                            .padding(bottom = 12.dp)
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = festiveContentPadding),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
                         Text(
-                            text = context.getString(R.string.settings_intensity),
+                            text = context.getString(R.string.settings_decoration_intensity),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = context.getString(R.string.settings_intensity),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "${(festiveThemeIntensity * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Slider(
+                            value = festiveThemeIntensity,
+                            onValueChange = { appSettings.setFestiveThemeIntensity(it) },
+                            valueRange = 0.1f..1f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = context.getString(R.string.settings_snowflake_size),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "${(festiveSnowflakeSize * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Slider(
+                            value = festiveSnowflakeSize,
+                            onValueChange = { appSettings.setFestiveSnowflakeSize(it) },
+                            valueRange = 0.5f..2.0f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = context.getString(R.string.settings_snowflake_display_area),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = festiveSnowflakeArea == "FULL_SCREEN",
+                                onClick = { appSettings.setFestiveSnowflakeArea("FULL_SCREEN") },
+                                label = { Text(context.getString(R.string.settings_area_full)) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            FilterChip(
+                                selected = festiveSnowflakeArea == "LEFT_RIGHT_ONLY",
+                                onClick = { appSettings.setFestiveSnowflakeArea("LEFT_RIGHT_ONLY") },
+                                label = { Text(context.getString(R.string.settings_area_sides)) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            FilterChip(
+                                selected = festiveSnowflakeArea == "TOP_ONE_THIRD",
+                                onClick = { appSettings.setFestiveSnowflakeArea("TOP_ONE_THIRD") },
+                                label = { Text(context.getString(R.string.settings_area_top_third)) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
                         Text(
-                            text = "${(festiveThemeIntensity * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            text = context.getString(R.string.settings_decoration_elements),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DecorationToggleCard(
+                                title = context.getString(R.string.settings_snowfall),
+                                description = context.getString(R.string.settings_snowfall_desc),
+                                icon = Icons.Rounded.AcUnit,
+                                isEnabled = festiveShowSnowfall,
+                                onToggle = { appSettings.setFestiveShowSnowfall(it) }
+                            )
+                            DecorationToggleCard(
+                                title = context.getString(R.string.settings_top_lights),
+                                description = context.getString(R.string.settings_top_lights_desc),
+                                icon = Icons.Rounded.Lightbulb,
+                                isEnabled = festiveShowTopLights,
+                                onToggle = { appSettings.setFestiveShowTopLights(it) }
+                            )
+                            DecorationToggleCard(
+                                title = context.getString(R.string.settings_side_garland),
+                                description = context.getString(R.string.settings_side_garland_desc),
+                                icon = Icons.Rounded.Park,
+                                isEnabled = festiveShowSideGarland,
+                                onToggle = { appSettings.setFestiveShowSideGarland(it) }
+                            )
+                            DecorationToggleCard(
+                                title = context.getString(R.string.settings_snow_pile),
+                                description = context.getString(R.string.settings_snow_pile_desc),
+                                icon = Icons.Rounded.Terrain,
+                                isEnabled = festiveShowBottomSnow,
+                                onToggle = { appSettings.setFestiveShowBottomSnow(it) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Slider(
-                        value = festiveThemeIntensity,
-                        onValueChange = { appSettings.setFestiveThemeIntensity(it) },
-                        valueRange = 0.1f..1f,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = festiveContentPadding)
-                    )
-                }
-                
-                // Snowflake Size
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = festiveContentPadding),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = context.getString(R.string.settings_snowflake_size),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "${(festiveSnowflakeSize * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Slider(
-                        value = festiveSnowflakeSize,
-                        onValueChange = { appSettings.setFestiveSnowflakeSize(it) },
-                        valueRange = 0.5f..2.0f,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = festiveContentPadding)
-                    )
-                }
-                
-                // Snowflake Area
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = context.getString(R.string.settings_snowflake_display_area),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = festiveContentPadding)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = festiveContentPadding),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilterChip(
-                            selected = festiveSnowflakeArea == "FULL_SCREEN",
-                            onClick = { appSettings.setFestiveSnowflakeArea("FULL_SCREEN") },
-                            label = { Text(context.getString(R.string.settings_area_full)) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = festiveSnowflakeArea == "LEFT_RIGHT_ONLY",
-                            onClick = { appSettings.setFestiveSnowflakeArea("LEFT_RIGHT_ONLY") },
-                            label = { Text(context.getString(R.string.settings_area_sides)) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = festiveSnowflakeArea == "TOP_ONE_THIRD",
-                            onClick = { appSettings.setFestiveSnowflakeArea("TOP_ONE_THIRD") },
-                            label = { Text(context.getString(R.string.settings_area_top_third)) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                
-                // Decoration Elements
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = context.getString(R.string.settings_decoration_elements),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(horizontal = festiveContentPadding)
-                            .padding(bottom = 8.dp)
-                    )
-                }
-                
-                item {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = festiveContentPadding)
-                    ) {
-                        DecorationToggleCard(
-                            title = context.getString(R.string.settings_snowfall),
-                            description = context.getString(R.string.settings_snowfall_desc),
-                            icon = Icons.Rounded.AcUnit,
-                            isEnabled = festiveShowSnowfall,
-                            onToggle = { appSettings.setFestiveShowSnowfall(it) }
-                        )
-                        DecorationToggleCard(
-                            title = context.getString(R.string.settings_top_lights),
-                            description = context.getString(R.string.settings_top_lights_desc),
-                            icon = Icons.Rounded.Lightbulb,
-                            isEnabled = festiveShowTopLights,
-                            onToggle = { appSettings.setFestiveShowTopLights(it) }
-                        )
-                        DecorationToggleCard(
-                            title = context.getString(R.string.settings_side_garland),
-                            description = context.getString(R.string.settings_side_garland_desc),
-                            icon = Icons.Rounded.Park,
-                            isEnabled = festiveShowSideGarland,
-                            onToggle = { appSettings.setFestiveShowSideGarland(it) }
-                        )
-                        DecorationToggleCard(
-                            title = context.getString(R.string.settings_snow_pile),
-                            description = context.getString(R.string.settings_snow_pile_desc),
-                            icon = Icons.Rounded.Terrain,
-                            isEnabled = festiveShowBottomSnow,
-                            onToggle = { appSettings.setFestiveShowBottomSnow(it) }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }

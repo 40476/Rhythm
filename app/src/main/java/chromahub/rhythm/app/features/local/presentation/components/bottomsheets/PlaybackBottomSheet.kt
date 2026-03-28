@@ -1521,53 +1521,10 @@ private fun AnimatedAudioSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val thumbColor by animateColorAsState(
-        targetValue = if (checked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "thumbColor"
-    )
-    
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "trackColor"
-    )
-    
-    Switch(
+    chromahub.rhythm.app.features.local.presentation.screens.settings.TunerAnimatedSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = thumbColor,
-            checkedTrackColor = trackColor,
-            uncheckedThumbColor = thumbColor,
-            uncheckedTrackColor = trackColor
-        ),
-        thumbContent = {
-            AnimatedVisibility(
-                visible = checked,
-                enter = scaleIn(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                Icon(
-                    imageVector = RhythmIcons.Check,
-                    contentDescription = null,
-                    
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
+        modifier = modifier
     )
 }
 

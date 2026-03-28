@@ -294,7 +294,7 @@ private fun FestiveSettingRow(
                 )
             }
         }
-        Switch(
+        TunerAnimatedSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled

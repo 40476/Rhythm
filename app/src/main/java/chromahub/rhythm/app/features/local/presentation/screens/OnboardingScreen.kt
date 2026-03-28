@@ -151,6 +151,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.provider.DocumentsContract
 import android.util.Log
@@ -167,7 +170,6 @@ import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveButt
 import chromahub.rhythm.app.shared.presentation.components.icons.RhythmIcons
 import chromahub.rhythm.app.features.local.presentation.components.settings.LanguageSwitcherDialog
 import chromahub.rhythm.app.features.local.presentation.components.settings.LibraryTabOrderBottomSheet
-import chromahub.rhythm.app.features.local.presentation.components.bottomsheets.BackupRestoreBottomSheet
 import chromahub.rhythm.app.features.local.presentation.screens.onboarding.OnboardingStep
 import chromahub.rhythm.app.features.local.presentation.screens.onboarding.PermissionScreenState
 import chromahub.rhythm.app.shared.presentation.viewmodel.AppUpdaterViewModel
@@ -216,7 +218,6 @@ fun OnboardingScreen(
 
     // Bottom sheet states
     var showLibraryTabOrderBottomSheet by remember { mutableStateOf(false) }
-    var showBackupRestoreBottomSheet by remember { mutableStateOf(false) }
 
     // Responsive sizing
     val isTablet = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium || windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
@@ -571,7 +572,6 @@ fun OnboardingScreen(
                                     onNextStep = onNextStep,
                                     onSkip = onNextStep,
                                     appSettings = appSettings,
-                                    onOpenBottomSheet = { showBackupRestoreBottomSheet = true },
                                     isTablet = isTablet,
                                     backButton = if (stepIndex > 0) {
                                         {
@@ -1656,13 +1656,6 @@ fun OnboardingScreen(
             haptics = haptic
         )
     }
-
-    if (showBackupRestoreBottomSheet) {
-        BackupRestoreBottomSheet(
-            onDismiss = { showBackupRestoreBottomSheet = false },
-            appSettings = appSettings
-        )
-    }
 }
 
 /**
@@ -2650,7 +2643,6 @@ fun EnhancedBackupRestoreContent(
     onNextStep: () -> Unit,
     appSettings: AppSettings,
     onSkip: () -> Unit = {},
-    onOpenBottomSheet: () -> Unit = {},
     isTablet: Boolean = false,
     backButton: @Composable (() -> Unit)? = null,
     nextButton: @Composable () -> Unit
@@ -2658,6 +2650,7 @@ fun EnhancedBackupRestoreContent(
     val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val musicViewModel: MusicViewModel = viewModel()
     val scrollState = rememberScrollState()
 
     // State for backup settings
@@ -2665,7 +2658,171 @@ fun EnhancedBackupRestoreContent(
     val lastBackupTimestamp by appSettings.lastBackupTimestamp.collectAsState()
 
     // Local UI state
-    var showBackupTip by remember { mutableStateOf(false) }
+    var isCreatingBackup by remember { mutableStateOf(false) }
+    var isRestoringFromClipboard by remember { mutableStateOf(false) }
+    var isRestoringFromFile by remember { mutableStateOf(false) }
+    var backupStatusMessage by remember { mutableStateOf<String?>(null) }
+    var backupStatusIsError by remember { mutableStateOf(false) }
+    var showRestartHint by remember { mutableStateOf(false) }
+
+    val isBusy = isCreatingBackup || isRestoringFromClipboard || isRestoringFromFile
+
+    fun restartApp() {
+        val packageManager = context.packageManager
+        val intent = packageManager.getLaunchIntentForPackage(context.packageName)
+        val componentName = intent?.component
+        val mainIntent = Intent.makeRestartActivityTask(componentName)
+        context.startActivity(mainIntent)
+        (context as? Activity)?.finish()
+        Runtime.getRuntime().exit(0)
+    }
+
+    fun handleRestorePayload(backupJson: String?) {
+        if (backupJson.isNullOrEmpty()) {
+            backupStatusIsError = true
+            backupStatusMessage = "Unable to read backup data"
+            showRestartHint = false
+            return
+        }
+
+        if (appSettings.restoreFromBackup(backupJson)) {
+            musicViewModel.reloadPlaylistsFromSettings()
+            backupStatusIsError = false
+            backupStatusMessage = "Backup restored successfully. Restart the app to apply all changes."
+            showRestartHint = true
+        } else {
+            backupStatusIsError = true
+            backupStatusMessage = "Invalid backup format or corrupted data"
+            showRestartHint = false
+        }
+    }
+
+    val backupLocationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                scope.launch {
+                    try {
+                        isCreatingBackup = true
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.LongPress)
+                        musicViewModel.ensurePlaylistsSaved()
+
+                        val backupJson = appSettings.createBackup()
+                        val outputStream = context.contentResolver.openOutputStream(uri)
+                            ?: throw IllegalStateException("Unable to open backup destination")
+                        outputStream.use { stream ->
+                            stream.write(backupJson.toByteArray())
+                            stream.flush()
+                        }
+
+                        appSettings.setLastBackupTimestamp(System.currentTimeMillis())
+                        appSettings.setBackupLocation(uri.toString())
+
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Rhythm Backup", backupJson)
+                        clipboard.setPrimaryClip(clip)
+
+                        backupStatusIsError = false
+                        backupStatusMessage = "Backup created and copied to clipboard."
+                        showRestartHint = false
+                    } catch (e: Exception) {
+                        backupStatusIsError = true
+                        backupStatusMessage = "Failed to create backup: ${e.message}"
+                        showRestartHint = false
+                    } finally {
+                        isCreatingBackup = false
+                    }
+                }
+            } ?: run {
+                isCreatingBackup = false
+            }
+        } else {
+            isCreatingBackup = false
+        }
+    }
+
+    val restoreFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                scope.launch {
+                    try {
+                        isRestoringFromFile = true
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.LongPress)
+                        val backupJson = context.contentResolver.openInputStream(uri)
+                            ?.bufferedReader()
+                            ?.use { it.readText() }
+                        handleRestorePayload(backupJson)
+                    } catch (e: Exception) {
+                        backupStatusIsError = true
+                        backupStatusMessage = "Failed to restore from file: ${e.message}"
+                        showRestartHint = false
+                    } finally {
+                        isRestoringFromFile = false
+                    }
+                }
+            } ?: run {
+                isRestoringFromFile = false
+            }
+        } else {
+            isRestoringFromFile = false
+        }
+    }
+
+    fun restoreFromClipboard() {
+        scope.launch {
+            try {
+                isRestoringFromClipboard = true
+                HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.LongPress)
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = clipboard.primaryClip
+                val backupJson = if (clip != null && clip.itemCount > 0) {
+                    clip.getItemAt(0).coerceToText(context)?.toString()
+                } else {
+                    null
+                }
+
+                if (backupJson == null) {
+                    backupStatusIsError = true
+                    backupStatusMessage = "No backup found in clipboard"
+                    showRestartHint = false
+                } else {
+                    handleRestorePayload(backupJson)
+                }
+            } catch (e: Exception) {
+                backupStatusIsError = true
+                backupStatusMessage = "Failed to restore from clipboard: ${e.message}"
+                showRestartHint = false
+            } finally {
+                isRestoringFromClipboard = false
+            }
+        }
+    }
+
+    fun launchCreateBackup() {
+        if (isBusy) return
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(
+                Intent.EXTRA_TITLE,
+                "rhythm_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.json"
+            )
+        }
+        backupLocationLauncher.launch(intent)
+    }
+
+    fun launchRestoreFile() {
+        if (isBusy) return
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "*/*"))
+        }
+        restoreFileLauncher.launch(intent)
+    }
 
     if (isTablet) {
         // Tablet layout: Left side - icon, title, description, tips, action buttons; Right side - toggles and cards
@@ -2798,47 +2955,39 @@ fun EnhancedBackupRestoreContent(
                     )
                 }
 
-                // Backup & Restore management card
-                Card(
-                    onClick = onOpenBottomSheet,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Backup,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            contentDescription = null,
-                            
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = context.getString(R.string.onboarding_backup_center),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = context.getString(R.string.onboarding_backup_center_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Open backup & restore",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            
-                            modifier = Modifier.size(20.dp)
-                        )
+                OnboardingBackupActionCard(
+                    isCreatingBackup = isCreatingBackup,
+                    isRestoringFromClipboard = isRestoringFromClipboard,
+                    isRestoringFromFile = isRestoringFromFile,
+                    onCreateBackup = {
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        launchCreateBackup()
+                    },
+                    onRestoreFromClipboard = {
+                        if (isBusy) return@OnboardingBackupActionCard
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        restoreFromClipboard()
+                    },
+                    onRestoreFromFile = {
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        launchRestoreFile()
                     }
+                )
+
+                AnimatedVisibility(
+                    visible = backupStatusMessage != null,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    BackupRestoreStatusCard(
+                        message = backupStatusMessage ?: "",
+                        isError = backupStatusIsError,
+                        showRestart = showRestartHint,
+                        onRestart = {
+                            HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                            restartApp()
+                        }
+                    )
                 }
 
                 // Tip card
@@ -2951,47 +3100,39 @@ fun EnhancedBackupRestoreContent(
                     )
                 }
 
-                // Backup & Restore management card
-                Card(
-                    onClick = onOpenBottomSheet,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Backup,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            contentDescription = null,
-                            
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = context.getString(R.string.onboarding_backup_center),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = context.getString(R.string.onboarding_backup_center_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Open backup & restore",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            
-                            modifier = Modifier.size(20.dp)
-                        )
+                OnboardingBackupActionCard(
+                    isCreatingBackup = isCreatingBackup,
+                    isRestoringFromClipboard = isRestoringFromClipboard,
+                    isRestoringFromFile = isRestoringFromFile,
+                    onCreateBackup = {
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        launchCreateBackup()
+                    },
+                    onRestoreFromClipboard = {
+                        if (isBusy) return@OnboardingBackupActionCard
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        restoreFromClipboard()
+                    },
+                    onRestoreFromFile = {
+                        HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                        launchRestoreFile()
                     }
+                )
+
+                AnimatedVisibility(
+                    visible = backupStatusMessage != null,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    BackupRestoreStatusCard(
+                        message = backupStatusMessage ?: "",
+                        isError = backupStatusIsError,
+                        showRestart = showRestartHint,
+                        onRestart = {
+                            HapticUtils.performHapticFeedback(context, hapticFeedback, HapticFeedbackType.TextHandleMove)
+                            restartApp()
+                        }
+                    )
                 }
 
                 // Tip card
@@ -3075,6 +3216,192 @@ fun EnhancedBackupRestoreContent(
             } // End vertically centered content
 
             Spacer(modifier = Modifier.height(0.dp))
+        }
+    }
+}
+
+@Composable
+private fun OnboardingBackupActionCard(
+    isCreatingBackup: Boolean,
+    isRestoringFromClipboard: Boolean,
+    isRestoringFromFile: Boolean,
+    onCreateBackup: () -> Unit,
+    onRestoreFromClipboard: () -> Unit,
+    onRestoreFromFile: () -> Unit
+) {
+    val context = LocalContext.current
+    val isBusy = isCreatingBackup || isRestoringFromClipboard || isRestoringFromFile
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = context.getString(R.string.onboarding_backup_center),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OnboardingBackupActionRow(
+                icon = Icons.Filled.Save,
+                title = context.getString(R.string.settings_create_backup),
+                description = context.getString(R.string.settings_create_backup_desc),
+                inProgress = isCreatingBackup,
+                enabled = !isBusy,
+                onClick = onCreateBackup
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f)
+            )
+
+            OnboardingBackupActionRow(
+                icon = Icons.Filled.ContentCopy,
+                title = context.getString(R.string.settings_restore_clipboard),
+                description = context.getString(R.string.settings_restore_clipboard_desc),
+                inProgress = isRestoringFromClipboard,
+                enabled = !isBusy,
+                onClick = onRestoreFromClipboard
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f)
+            )
+
+            OnboardingBackupActionRow(
+                icon = Icons.Filled.FolderOpen,
+                title = context.getString(R.string.settings_restore_file),
+                description = context.getString(R.string.settings_restore_file_desc),
+                inProgress = isRestoringFromFile,
+                enabled = !isBusy,
+                onClick = onRestoreFromFile
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnboardingBackupActionRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    inProgress: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled && !inProgress, onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (inProgress) {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+            )
+        }
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun BackupRestoreStatusCard(
+    message: String,
+    isError: Boolean,
+    showRestart: Boolean,
+    onRestart: () -> Unit
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isError) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.tertiaryContainer
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (isError) Icons.Filled.Error else Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = if (isError) context.getString(R.string.ui_error) else "Success",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer
+            )
+
+            if (!isError && showRestart) {
+                Spacer(modifier = Modifier.height(12.dp))
+                FilledTonalButton(
+                    onClick = onRestart,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.RestartAlt,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(context.getString(R.string.settings_restart_now))
+                }
+            }
         }
     }
 }
@@ -5002,18 +5329,12 @@ fun EnhancedThemeOption(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            Switch(
+            OnboardingAnimatedSwitch(
                 checked = isEnabled,
                 onCheckedChange = { enabled ->
                     HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
                     onToggle(enabled)
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerLow
-                )
+                }
             )
         }
     }
@@ -6373,18 +6694,12 @@ fun EnhancedUpdateOption(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            Switch(
+            OnboardingAnimatedSwitch(
                 checked = isEnabled,
                 onCheckedChange = { enabled ->
                     HapticUtils.performHapticFeedback(context, haptic, HapticFeedbackType.LongPress)
                     onToggle(enabled)
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerLow
-                )
+                }
             )
         }
     }
@@ -9518,56 +9833,10 @@ fun OnboardingAnimatedSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val thumbColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.onPrimary
-        else 
-            MaterialTheme.colorScheme.outline,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "onboarding_thumb_color"
-    )
-    
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) 
-            MaterialTheme.colorScheme.primary
-        else 
-            MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "onboarding_track_color"
-    )
-    
-    Switch(
+    chromahub.rhythm.app.features.local.presentation.screens.settings.TunerAnimatedSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = thumbColor,
-            checkedTrackColor = trackColor,
-            checkedBorderColor = Color.Transparent,
-            uncheckedThumbColor = thumbColor,
-            uncheckedTrackColor = trackColor,
-            uncheckedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-        ),
-        thumbContent = {
-            AnimatedVisibility(
-                visible = checked,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-                exit = scaleOut(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeOut()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
+        modifier = modifier
     )
 }
 

@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.filled.Close
@@ -450,13 +451,17 @@ fun SettingsScreen(
                                 rhythmGuardMode = rhythmGuardMode,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 16.dp)
+                                    .padding(top = 8.dp, bottom = 2.dp)
                             )
                         }
                     }
 
-                    items(settingGroups, key = { "setting_${it.title}" }) { group ->
-                        Spacer(modifier = Modifier.height(28.dp))
+                    itemsIndexed(settingGroups, key = { _, group -> "setting_${group.title}" }) { index, group ->
+                        Spacer(
+                            modifier = Modifier.height(
+                                if (index == 0 && showSettingsSuggestions) 10.dp else 28.dp
+                            )
+                        )
                         Text(
                             text = group.title,
                             style = MaterialTheme.typography.labelLarge,
@@ -1160,53 +1165,10 @@ private fun AnimatedSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val thumbColor by animateColorAsState(
-        targetValue = if (checked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "thumbColor"
-    )
-    
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "trackColor"
-    )
-    
-    Switch(
+    TunerAnimatedSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = thumbColor,
-            checkedTrackColor = trackColor,
-            uncheckedThumbColor = thumbColor,
-            uncheckedTrackColor = trackColor
-        ),
-        thumbContent = {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = checked,
-                enter = scaleIn(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
+        modifier = modifier
     )
 }
 
