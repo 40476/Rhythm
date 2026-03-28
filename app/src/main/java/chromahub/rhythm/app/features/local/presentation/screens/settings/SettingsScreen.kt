@@ -894,6 +894,8 @@ fun SettingsScreenWrapper(
     var currentRoute by rememberSaveable { mutableStateOf<String?>(null) }
     var showSleepTimerBottomSheet by rememberSaveable { mutableStateOf(false) }
     val musicViewModel: MusicViewModel = viewModel()
+    val currentSong by musicViewModel.currentSong.collectAsState()
+    val isPlaying by musicViewModel.isPlaying.collectAsState()
 
     // Hoist the main settings scroll state to persist across navigation
     val mainSettingsScrollState = rememberSaveable(
@@ -1161,8 +1163,8 @@ fun SettingsScreenWrapper(
     if (showSleepTimerBottomSheet) {
         SleepTimerBottomSheetNew(
             onDismiss = { showSleepTimerBottomSheet = false },
-            currentSong = null,
-            isPlaying = false,
+            currentSong = currentSong,
+            isPlaying = isPlaying,
             musicViewModel = musicViewModel
         )
     }
