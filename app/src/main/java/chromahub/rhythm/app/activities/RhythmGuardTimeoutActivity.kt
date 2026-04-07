@@ -2,6 +2,7 @@
 
 package chromahub.rhythm.app.activities
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -78,12 +79,21 @@ class RhythmGuardTimeoutActivity : ComponentActivity() {
 
     private val appSettings by lazy { AppSettings.getInstance(applicationContext) }
 
+    private fun cancelRhythmGuardTimerNotification() {
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(RHYTHM_GUARD_TIMER_NOTIFICATION_ID)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val reason = intent.getStringExtra(EXTRA_REASON).orEmpty()
         val timeoutUntilMs = intent.getLongExtra(EXTRA_TIMEOUT_UNTIL_MS, 0L)
         val timeoutStartedAtMs = intent.getLongExtra(EXTRA_TIMEOUT_STARTED_AT_MS, 0L)
+        val launchNow = System.currentTimeMillis()
+        val timeoutWasActiveAtLaunch =
+            timeoutUntilMs > launchNow || appSettings.rhythmGuardTimeoutUntilMs.value > launchNow
 
         setContent {
             RhythmTheme {
@@ -96,11 +106,13 @@ class RhythmGuardTimeoutActivity : ComponentActivity() {
                         finish()
                     },
                     onTimeoutFinished = { completedTimeoutUntilMs ->
-                        if (completedTimeoutUntilMs > 0L) {
+                        val shouldApplyCooldown = completedTimeoutUntilMs > 0L || timeoutWasActiveAtLaunch
+                        if (shouldApplyCooldown) {
                             val cooldownMinutes = appSettings.rhythmGuardPostTimeoutCooldownMinutes.value.coerceIn(1, 60)
                             val cooldownUntil = System.currentTimeMillis() + cooldownMinutes.toLong() * 60_000L
                             appSettings.setRhythmGuardTimeoutCooldownUntilMs(cooldownUntil)
                         }
+                        cancelRhythmGuardTimerNotification()
                         appSettings.clearRhythmGuardListeningTimeout()
                         finish()
                     }
@@ -110,6 +122,7 @@ class RhythmGuardTimeoutActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val RHYTHM_GUARD_TIMER_NOTIFICATION_ID = 1302
         private const val EXTRA_REASON = "extra_timeout_reason"
         private const val EXTRA_TIMEOUT_UNTIL_MS = "extra_timeout_until_ms"
         private const val EXTRA_TIMEOUT_STARTED_AT_MS = "extra_timeout_started_at_ms"

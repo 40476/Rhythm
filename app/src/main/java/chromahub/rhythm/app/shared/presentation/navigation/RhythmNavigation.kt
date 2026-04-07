@@ -680,7 +680,15 @@ private fun RhythmGuardWarningHost(
         val exposureCooldownEligible = cooldownElapsed && exposureGrowthSinceLastTimeout >= 10
         val canShow = when (warningType) {
             RhythmGuardWarningType.VOLUME -> warningTypeChanged || cooldownElapsed || riskStepIncreased
-            RhythmGuardWarningType.EXPOSURE -> warningTypeChanged || riskStepIncreased || exposureCooldownEligible
+            RhythmGuardWarningType.EXPOSURE -> {
+                val switchedFromVolume = warningTypeChanged && lastWarningType == RhythmGuardWarningType.VOLUME
+                val canEscalateFromVolume = riskStepIncreased || exposureCooldownEligible
+                if (switchedFromVolume && !canEscalateFromVolume) {
+                    false
+                } else {
+                    warningTypeChanged || riskStepIncreased || exposureCooldownEligible
+                }
+            }
         }
 
         if (canShow && volumeDialogState == null && breakDialogState == null) {
