@@ -431,7 +431,7 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY && player.audioSessionId != 0) {
                     // Reinitialize audio effects with valid session ID
-                    val previouslyEnabled = equalizer?.enabled ?: false
+                    val previouslyEnabled = getEqualizerEnabledSafe()
                     Log.d(TAG, "Player ready with session ID ${player.audioSessionId}, reinitializing effects (EQ was: $previouslyEnabled)")
                     initializeAudioEffects()
                     
@@ -464,7 +464,7 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
                     }
                     
                     // Verify state was preserved
-                    val currentlyEnabled = equalizer?.enabled ?: false
+                    val currentlyEnabled = getEqualizerEnabledSafe()
                     if (previouslyEnabled != currentlyEnabled && appSettings.equalizerEnabled.value)
                     {
                         Log.w(TAG, "Equalizer state changed after reinitialization! Was: $previouslyEnabled, Now: $currentlyEnabled, Expected: ${appSettings.equalizerEnabled.value}") // Force re-apply settings
@@ -581,6 +581,34 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
         
         // Try to initialize audio effects (might fail if session ID not ready)
         initializeAudioEffects()
+    }
+
+    private inline fun <T> withEqualizerSafe(
+        operation: String,
+        defaultValue: T,
+        block: (android.media.audiofx.Equalizer) -> T
+    ): T {
+        val eq = equalizer ?: return defaultValue
+        return try {
+            block(eq)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Skipping equalizer $operation because effect is not initialized", e)
+            defaultValue
+        } catch (e: Exception) {
+            Log.w(TAG, "Equalizer $operation failed", e)
+            defaultValue
+        }
+    }
+
+    private fun getEqualizerEnabledSafe(): Boolean {
+        return withEqualizerSafe("enabled state read", false) { it.enabled }
+    }
+
+    private fun setEqualizerEnabledSafe(enabled: Boolean): Boolean {
+        return withEqualizerSafe("enabled state write", false) { eq ->
+            eq.enabled = enabled
+            eq.enabled
+        }
     }
     
     private fun handlePlaybackError(error: PlaybackException) {
@@ -1025,7 +1053,7 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
                 setEqualizerEnabled(enabled)
                 
                 // Broadcast current state back for UI verification
-                val actualState = equalizer?.enabled ?: false
+                val actualState = getEqualizerEnabledSafe()
                 if (actualState != enabled) {
                     Log.w(TAG, "Equalizer state verification failed. Requested: $enabled, Actual: $actualState")
                 }
@@ -1949,8 +1977,7 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
             }
             
             // Enable equalizer AFTER applying levels to avoid audio glitches
-            equalizer?.enabled = shouldBeEnabled
-            val actualState = equalizer?.enabled ?: false
+            val actualState = setEqualizerEnabledSafe(shouldBeEnabled)
             if (actualState != shouldBeEnabled) {
                 Log.e(TAG, "EQ state mismatch after load! Expected: $shouldBeEnabled, Actual: $actualState")
             }
@@ -1996,8 +2023,7 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
             }
         }
         
-        equalizer?.enabled = enabled
-        val actualState = equalizer?.enabled ?: false
+        val actualState = setEqualizerEnabledSafe(enabled)
         Log.d(TAG, "Equalizer enabled: $enabled, actual state: $actualState")
         
         if (actualState != enabled) {
@@ -2027,15 +2053,15 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
     }
     
     fun getEqualizerBandLevel(band: Short): Short {
-        return equalizer?.getBandLevel(band) ?: 0
+        return withEqualizerSafe("band level read", 0) { it.getBandLevel(band) }
     }
     
     fun getNumberOfBands(): Short {
-        return equalizer?.numberOfBands ?: 0
+        return withEqualizerSafe("band count read", 0) { it.numberOfBands }
     }
     
     fun getBandFreqRange(band: Short): IntArray? {
-        return equalizer?.getBandFreqRange(band)
+        return withEqualizerSafe("band frequency range read", null) { it.getBandFreqRange(band) }
     }
     
     fun isEqualizerSupported(): Boolean {
@@ -2056,9 +2082,10 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
             appendLine("--- Equalizer ---")
             appendLine("Equalizer object: ${if (equalizer != null) "initialized" else "null"}")
             equalizer?.let { eq ->
-                appendLine("Enabled state: ${eq.enabled}")
-                appendLine("Number of bands: ${eq.numberOfBands}")
-                appendLine("Band levels: ${(0 until eq.numberOfBands.toInt()).map { eq.getBandLevel(it.toShort()) }}")
+                appendLine("Enabled state: ${withEqualizerSafe("diagnostics enabled read", false) { it.enabled }}")
+                val bandCount = withEqualizerSafe("diagnostics band count read", 0) { it.numberOfBands.toInt() }
+                appendLine("Number of bands: $bandCount")
+                appendLine("Band levels: ${(0 until bandCount).map { bandIndex -> withEqualizerSafe("diagnostics band level read", 0) { it.getBandLevel(bandIndex.toShort()) } }}")
             }
             appendLine("Settings - Enabled: ${appSettings.equalizerEnabled.value}")
             appendLine("Settings - Preset: ${appSettings.equalizerPreset.value}")
