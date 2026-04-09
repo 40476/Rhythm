@@ -1330,6 +1330,16 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             settingKey = "broadcastStatusEnabled"
         ))
         add(SearchableSettingItem(
+            id = "bluetooth_lyrics_enabled",
+            title = context.getString(R.string.settings_bluetooth_lyrics_enabled),
+            description = context.getString(R.string.settings_bluetooth_lyrics_enabled_desc),
+            keywords = listOf("bluetooth", "lyrics", "avrcp", "metadata", "rokid", "smart glasses"),
+            icon = Icons.Default.Lyrics,
+            route = SettingsRoutes.EXPERIMENTAL_FEATURES,
+            parentScreen = "Experimental",
+            settingKey = "bluetoothLyricsEnabled"
+        ))
+        add(SearchableSettingItem(
             id = "home_section_order",
             title = context.getString(R.string.settings_home_section_order),
             description = context.getString(R.string.settings_home_section_order_desc),

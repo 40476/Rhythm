@@ -45,6 +45,8 @@ class StatusBroadcaster(private val context: Context) {
         // Additional extras for enhanced compatibility
         private const val EXTRA_LIST_SIZE = "ListSize"
         private const val EXTRA_LIST_POSITION = "ListPosition"
+
+        private const val DEFAULT_BLUETOOTH_LYRIC_LINE = "No lyrics"
         
         private const val PACKAGE_NAME = "chromahub.rhythm.app"
     }
@@ -53,14 +55,33 @@ class StatusBroadcaster(private val context: Context) {
      * Broadcast track metadata change
      * This should be called when the track changes
      */
-    fun broadcastMetadataChanged(song: Song, position: Long = 0L, queueSize: Int = 0, queuePosition: Int = 0) {
+    fun broadcastMetadataChanged(
+        song: Song,
+        position: Long = 0L,
+        queueSize: Int = 0,
+        queuePosition: Int = 0,
+        bluetoothLyricsMode: Boolean = false,
+        currentLyricLine: String? = null
+    ) {
         try {
+            val mergedTitleArtist = listOf(song.title, song.artist)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString(" - ")
+                .ifBlank { song.title }
+            val artistMetadata = if (bluetoothLyricsMode) mergedTitleArtist else song.artist
+            val trackMetadata = if (bluetoothLyricsMode) {
+                currentLyricLine?.takeIf { it.isNotBlank() } ?: DEFAULT_BLUETOOTH_LYRIC_LINE
+            } else {
+                song.title
+            }
+
             val intent = Intent(ACTION_META_CHANGED).apply {
                 // Standard metadata
                 putExtra(EXTRA_ID, song.id.hashCode().toLong())
-                putExtra(EXTRA_ARTIST, song.artist)
+                putExtra(EXTRA_ARTIST, artistMetadata)
                 putExtra(EXTRA_ALBUM, song.album)
-                putExtra(EXTRA_TRACK, song.title)
+                putExtra(EXTRA_TRACK, trackMetadata)
                 putExtra(EXTRA_DURATION, song.duration)
                 putExtra(EXTRA_POSITION, position)
                 
@@ -75,7 +96,10 @@ class StatusBroadcaster(private val context: Context) {
             }
             
             context.sendBroadcast(intent)
-            Log.d(TAG, "Broadcast metadata: ${song.artist} - ${song.title} (${song.duration}ms)")
+            Log.d(
+                TAG,
+                "Broadcast metadata: artist='$artistMetadata', track='$trackMetadata', mode=${if (bluetoothLyricsMode) "bluetooth_lyrics" else "standard"}"
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error broadcasting metadata change", e)
         }
@@ -104,8 +128,23 @@ class StatusBroadcaster(private val context: Context) {
      * Broadcast complete status update (metadata + playstate)
      * Use this when starting a new track
      */
-    fun broadcastNowPlaying(song: Song, isPlaying: Boolean, position: Long = 0L, queueSize: Int = 0, queuePosition: Int = 0) {
-        broadcastMetadataChanged(song, position, queueSize, queuePosition)
+    fun broadcastNowPlaying(
+        song: Song,
+        isPlaying: Boolean,
+        position: Long = 0L,
+        queueSize: Int = 0,
+        queuePosition: Int = 0,
+        bluetoothLyricsMode: Boolean = false,
+        currentLyricLine: String? = null
+    ) {
+        broadcastMetadataChanged(
+            song = song,
+            position = position,
+            queueSize = queueSize,
+            queuePosition = queuePosition,
+            bluetoothLyricsMode = bluetoothLyricsMode,
+            currentLyricLine = currentLyricLine
+        )
         broadcastPlaystateChanged(isPlaying, position)
     }
 }

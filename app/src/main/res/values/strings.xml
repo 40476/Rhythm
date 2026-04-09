@@ -1146,6 +1146,8 @@
     <string name="broadcast_status_title">Broadcast Status</string>
     <string name="broadcast_status_enabled">Enable Status Broadcasting</string>
     <string name="broadcast_status_desc">Send playback info to Tasker, KWGT, and automation apps</string>
+    <string name="bluetooth_lyrics_enabled">Bluetooth Lyrics Mode</string>
+    <string name="bluetooth_lyrics_desc">Send synced lyric line as Bluetooth track title and move Song - Artist into artist metadata</string>
     <string name="broadcast_status_info_title">What is Status Broadcasting?</string>
     <string name="broadcast_status_info_desc">Status broadcasting sends standard Android music player intents that automation and widget apps listen for. This allows third-party apps to display your now playing info or trigger automations based on what you\'re listening to.</string>
     <string name="broadcast_compatible_apps">Compatible Apps</string>
@@ -2924,6 +2926,8 @@
     <string name="settings_discord_enabled_search_desc">Discord activity status</string>
     <string name="settings_broadcast_status_enabled">Enable Status Broadcasting</string>
     <string name="settings_broadcast_status_enabled_desc">Broadcast play status</string>
+    <string name="settings_bluetooth_lyrics_enabled">Bluetooth Lyrics Mode</string>
+    <string name="settings_bluetooth_lyrics_enabled_desc">Broadcast current lyric line via Bluetooth metadata</string>
     <string name="settings_exp_cellular_streaming">Allow Cellular Streaming</string>
     <string name="settings_exp_cellular_streaming_desc">Mobile data streaming</string>
 

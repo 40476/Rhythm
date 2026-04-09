@@ -547,7 +547,8 @@ class MediaPlaybackService : MediaLibraryService(), Player.Listener {
                                 player.isPlaying,
                                 player.currentPosition,
                                 player.mediaItemCount,
-                                player.currentMediaItemIndex
+                                player.currentMediaItemIndex,
+                                bluetoothLyricsMode = appSettings.bluetoothLyricsEnabled.value
                             )
                         }
                     } catch (e: Exception) {

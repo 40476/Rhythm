@@ -226,6 +226,7 @@ class AppSettings private constructor(context: Context) {
         
         // General Broadcast Status Settings (for Tasker, KWGT, etc.)
         private const val KEY_BROADCAST_STATUS_ENABLED = "broadcast_status_enabled"
+        private const val KEY_BLUETOOTH_LYRICS_ENABLED = "bluetooth_lyrics_enabled"
         
         // Enhanced User Preferences
         private const val KEY_FAVORITE_GENRES = "favorite_genres"
@@ -1089,6 +1090,9 @@ class AppSettings private constructor(context: Context) {
     // General Broadcast Status Settings
     private val _broadcastStatusEnabled = MutableStateFlow(prefs.getBoolean(KEY_BROADCAST_STATUS_ENABLED, false))
     val broadcastStatusEnabled: StateFlow<Boolean> = _broadcastStatusEnabled.asStateFlow()
+
+    private val _bluetoothLyricsEnabled = MutableStateFlow(prefs.getBoolean(KEY_BLUETOOTH_LYRICS_ENABLED, false))
+    val bluetoothLyricsEnabled: StateFlow<Boolean> = _bluetoothLyricsEnabled.asStateFlow()
 
     // Enhanced User Preferences
     private val _favoriteGenres = MutableStateFlow<Map<String, Int>>(
@@ -2356,6 +2360,11 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     fun setBroadcastStatusEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_BROADCAST_STATUS_ENABLED, enabled).apply()
         _broadcastStatusEnabled.value = enabled
+    }
+
+    fun setBluetoothLyricsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_BLUETOOTH_LYRICS_ENABLED, enabled).apply()
+        _bluetoothLyricsEnabled.value = enabled
     }
 
     // Enhanced User Preferences Methods
@@ -3808,6 +3817,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         
         // General Broadcast Status Settings
         _broadcastStatusEnabled.value = prefs.getBoolean(KEY_BROADCAST_STATUS_ENABLED, false)
+        _bluetoothLyricsEnabled.value = prefs.getBoolean(KEY_BLUETOOTH_LYRICS_ENABLED, false)
         
         // App Updates
         _autoCheckForUpdates.value = prefs.getBoolean(KEY_AUTO_CHECK_FOR_UPDATES, BuildConfig.FLAVOR != "fdroid")

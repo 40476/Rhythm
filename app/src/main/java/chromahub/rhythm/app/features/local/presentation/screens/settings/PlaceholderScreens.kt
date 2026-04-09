@@ -5500,6 +5500,7 @@ fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
     val scrobblingEnabled by appSettings.scrobblingEnabled.collectAsState()
     val discordRichPresenceEnabled by appSettings.discordRichPresenceEnabled.collectAsState()
     val broadcastStatusEnabled by appSettings.broadcastStatusEnabled.collectAsState()
+    val bluetoothLyricsEnabled by appSettings.bluetoothLyricsEnabled.collectAsState()
     
     val forcePlayerCompactMode by appSettings.forcePlayerCompactMode.collectAsState()
     
@@ -5633,6 +5634,18 @@ fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
                             context.getString(R.string.broadcast_status_desc),
                             toggleState = broadcastStatusEnabled,
                             onToggleChange = { appSettings.setBroadcastStatusEnabled(it) }
+                        ),
+                        SettingItem(
+                            Icons.Default.Lyrics,
+                            context.getString(R.string.bluetooth_lyrics_enabled),
+                            context.getString(R.string.bluetooth_lyrics_desc),
+                            toggleState = bluetoothLyricsEnabled,
+                            onToggleChange = {
+                                appSettings.setBluetoothLyricsEnabled(it)
+                                if (it && !broadcastStatusEnabled) {
+                                    appSettings.setBroadcastStatusEnabled(true)
+                                }
+                            }
                         )
                     )
                 )

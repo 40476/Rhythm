@@ -9143,6 +9143,7 @@ fun EnhancedIntegrationsContent(
     val scrobblingEnabled by appSettings.scrobblingEnabled.collectAsState()
     val discordRichPresenceEnabled by appSettings.discordRichPresenceEnabled.collectAsState()
     val broadcastStatusEnabled by appSettings.broadcastStatusEnabled.collectAsState()
+    val bluetoothLyricsEnabled by appSettings.bluetoothLyricsEnabled.collectAsState()
 
     if (isTablet) {
         Row(
@@ -9215,13 +9216,20 @@ fun EnhancedIntegrationsContent(
                     scrobblingEnabled = scrobblingEnabled,
                     discordRichPresenceEnabled = discordRichPresenceEnabled,
                     broadcastStatusEnabled = broadcastStatusEnabled,
+                    bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                     onDeezerChange = { appSettings.setDeezerApiEnabled(it) },
                     onLrcLibChange = { appSettings.setLrcLibApiEnabled(it) },
                     onYtMusicChange = { appSettings.setYTMusicApiEnabled(it) },
                     onSpotifyChange = { appSettings.setSpotifyApiEnabled(it) },
                     onScrobblingChange = { appSettings.setScrobblingEnabled(it) },
                     onDiscordChange = { appSettings.setDiscordRichPresenceEnabled(it) },
-                    onBroadcastChange = { appSettings.setBroadcastStatusEnabled(it) }
+                    onBroadcastChange = { appSettings.setBroadcastStatusEnabled(it) },
+                    onBluetoothLyricsChange = {
+                        appSettings.setBluetoothLyricsEnabled(it)
+                        if (it && !broadcastStatusEnabled) {
+                            appSettings.setBroadcastStatusEnabled(true)
+                        }
+                    }
                 )
             }
         }
@@ -9274,13 +9282,20 @@ fun EnhancedIntegrationsContent(
                 scrobblingEnabled = scrobblingEnabled,
                 discordRichPresenceEnabled = discordRichPresenceEnabled,
                 broadcastStatusEnabled = broadcastStatusEnabled,
+                bluetoothLyricsEnabled = bluetoothLyricsEnabled,
                 onDeezerChange = { appSettings.setDeezerApiEnabled(it) },
                 onLrcLibChange = { appSettings.setLrcLibApiEnabled(it) },
                 onYtMusicChange = { appSettings.setYTMusicApiEnabled(it) },
                 onSpotifyChange = { appSettings.setSpotifyApiEnabled(it) },
                 onScrobblingChange = { appSettings.setScrobblingEnabled(it) },
                 onDiscordChange = { appSettings.setDiscordRichPresenceEnabled(it) },
-                onBroadcastChange = { appSettings.setBroadcastStatusEnabled(it) }
+                onBroadcastChange = { appSettings.setBroadcastStatusEnabled(it) },
+                onBluetoothLyricsChange = {
+                    appSettings.setBluetoothLyricsEnabled(it)
+                    if (it && !broadcastStatusEnabled) {
+                        appSettings.setBroadcastStatusEnabled(true)
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -9301,13 +9316,15 @@ private fun IntegrationsSettingsCards(
     scrobblingEnabled: Boolean,
     discordRichPresenceEnabled: Boolean,
     broadcastStatusEnabled: Boolean,
+    bluetoothLyricsEnabled: Boolean,
     onDeezerChange: (Boolean) -> Unit,
     onLrcLibChange: (Boolean) -> Unit,
     onYtMusicChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onScrobblingChange: (Boolean) -> Unit,
     onDiscordChange: (Boolean) -> Unit,
-    onBroadcastChange: (Boolean) -> Unit
+    onBroadcastChange: (Boolean) -> Unit,
+    onBluetoothLyricsChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -9390,6 +9407,13 @@ private fun IntegrationsSettingsCards(
             context.getString(R.string.onboarding_integration_broadcast_desc),
             broadcastStatusEnabled,
             onBroadcastChange
+        ),
+        onboardingToggleItem(
+            Icons.Default.Lyrics,
+            context.getString(R.string.bluetooth_lyrics_enabled),
+            context.getString(R.string.bluetooth_lyrics_desc),
+            bluetoothLyricsEnabled,
+            onBluetoothLyricsChange
         )
     )
 

@@ -77,6 +77,9 @@ import chromahub.rhythm.app.util.PendingWriteRequest // Import for metadata writ
 import chromahub.rhythm.app.util.PendingLyricsWriteRequest
 import chromahub.rhythm.app.util.QueueUtils
 import chromahub.rhythm.app.util.GenreUtils
+import chromahub.rhythm.app.util.LyricLine
+import chromahub.rhythm.app.util.LyricsParser
+import chromahub.rhythm.app.utils.StatusBroadcaster
 import chromahub.rhythm.app.shared.data.repository.PlaybackStatsRepository // Import for enhanced stats tracking
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
@@ -141,6 +144,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     
     // Settings manager
     val appSettings = AppSettings.getInstance(application)
+
+    private val statusBroadcaster = StatusBroadcaster(application)
     
     // AutoEQ manager
     private val autoEQManager = chromahub.rhythm.app.utils.AutoEQManager(application)
@@ -225,6 +230,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     // Lyrics fetch job tracking to prevent race conditions
     private var lyricsFetchJob: Job? = null
+
+    private var cachedSyncedLyricsRaw: String? = null
+    private var cachedParsedSyncedLyrics: List<LyricLine> = emptyList()
+    private var lastBroadcastLyricSongId: String? = null
+    private var lastBroadcastLyricLine: String? = null
     
     // Scan job for cancellation support
     private var scanJob: Job? = null
@@ -3547,6 +3557,70 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 val currentProgress = controller.currentPosition.toFloat() / controller.duration.toFloat()
                 _progress.value = currentProgress.coerceIn(0f, 1f)
             }
+
+            maybeBroadcastBluetoothLyricsLine(controller)
+        }
+    }
+
+    private fun maybeBroadcastBluetoothLyricsLine(controller: MediaController) {
+        if (!appSettings.broadcastStatusEnabled.value || !appSettings.bluetoothLyricsEnabled.value) {
+            return
+        }
+
+        val song = _currentSong.value ?: return
+        val lyricLine = resolveCurrentSyncedLyricLine(
+            syncedLyrics = _currentLyrics.value?.syncedLyrics,
+            currentPositionMs = controller.currentPosition,
+            syncOffsetMs = _lyricsTimeOffset.value.toLong()
+        )
+
+        if (song.id == lastBroadcastLyricSongId && lyricLine == lastBroadcastLyricLine) {
+            return
+        }
+
+        statusBroadcaster.broadcastMetadataChanged(
+            song = song,
+            position = controller.currentPosition,
+            queueSize = controller.mediaItemCount,
+            queuePosition = controller.currentMediaItemIndex,
+            bluetoothLyricsMode = true,
+            currentLyricLine = lyricLine
+        )
+        lastBroadcastLyricSongId = song.id
+        lastBroadcastLyricLine = lyricLine
+    }
+
+    private fun resolveCurrentSyncedLyricLine(
+        syncedLyrics: String?,
+        currentPositionMs: Long,
+        syncOffsetMs: Long
+    ): String? {
+        val rawLyrics = syncedLyrics?.takeIf { it.isNotBlank() } ?: return null
+
+        if (cachedSyncedLyricsRaw != rawLyrics) {
+            cachedSyncedLyricsRaw = rawLyrics
+            cachedParsedSyncedLyrics = LyricsParser.parseLyrics(rawLyrics)
+            lastBroadcastLyricLine = null
+        }
+
+        if (cachedParsedSyncedLyrics.isEmpty()) {
+            return null
+        }
+
+        val effectivePosition = (currentPositionMs + syncOffsetMs).coerceAtLeast(0L)
+        return cachedParsedSyncedLyrics
+            .lastOrNull { it.timestamp <= effectivePosition }
+            ?.text
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun resetBluetoothLyricsBroadcastState(clearLastBroadcast: Boolean = false) {
+        cachedSyncedLyricsRaw = null
+        cachedParsedSyncedLyrics = emptyList()
+        if (clearLastBroadcast) {
+            lastBroadcastLyricSongId = null
+            lastBroadcastLyricLine = null
         }
     }
 
@@ -3588,6 +3662,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 if (song != null) {
+                    val previousSongId = _currentSong.value?.id
+                    if (previousSongId != song.id) {
+                        resetBluetoothLyricsBroadcastState(clearLastBroadcast = true)
+                    }
                     _currentSong.value = song
                     
                     // Update favorite status
@@ -3633,6 +3711,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d(TAG, "No current media item in controller")
                 // Clear current song and queue if no media item
                 _currentSong.value = null
+                resetBluetoothLyricsBroadcastState(clearLastBroadcast = true)
                 if (_currentQueue.value.songs.isNotEmpty()) {
                     _currentQueue.value = Queue(emptyList(), -1)
                     Log.d(TAG, "Cleared queue as no media item is active")
@@ -5400,6 +5479,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         Log.d(TAG, "Clearing current song (mini player dismissed)")
         // Clear in-memory state FIRST to prevent listener callbacks from re-saving stale data
         _currentSong.value = null
+        resetBluetoothLyricsBroadcastState(clearLastBroadcast = true)
         _isPlaying.value = false
         _progress.value = 0f
         _duration.value = 0L
