@@ -1,0 +1,402 @@
+package chromahub.rhythm.app.util
+
+import android.util.Log
+import chromahub.rhythm.app.network.RhythmLyricsLine
+import chromahub.rhythm.app.network.RhythmLyricsWord
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlin.math.abs
+
+object RhythmLyricsParser {
+    private const val TAG = "RhythmLyricsParser"
+    
+    // Pattern to detect voice tags in lyrics text (e.g., "v1: text" or "v2: text")
+    private val voiceTagPattern = java.util.regex.Pattern.compile("^(v\\d+):\\s*(.*)$", java.util.regex.Pattern.CASE_INSENSITIVE)
+
+    private enum class SupplementalLineKind {
+        TRANSLATION,
+        ROMANIZATION
+    }
+
+    /**
+    * Parses Rhythm word-by-word lyrics JSON into structured format
+    * @param jsonContent JSON string containing word-by-word lyrics data
+     * @return List of parsed word-level lyrics, or empty if parsing fails
+     */
+    fun parseWordByWordLyrics(jsonContent: String): List<WordByWordLyricLine> {
+        if (jsonContent.isBlank()) return emptyList()
+        
+        return try {
+            val gson = Gson()
+            val listType = object : TypeToken<List<RhythmLyricsLine>>() {}.type
+            val rhythmLyricsLines: List<RhythmLyricsLine> = gson.fromJson(jsonContent, listType)
+            
+            val parsedLines = rhythmLyricsLines.mapNotNull { line ->
+                var words = line.text?.map { word ->
+                    WordByWordWord(
+                        text = word.text,
+                        isPart = word.part ?: false,
+                        timestamp = word.timestamp,
+                        endtime = word.endtime
+                    )
+                } ?: emptyList()
+
+                if (words.isNotEmpty()) {
+                    words = words
+                        .sortedWith(compareBy<WordByWordWord> { it.timestamp }.thenBy { it.endtime })
+                        .map { word ->
+                            val normalizedEnd = maxOf(word.endtime, word.timestamp)
+                            word.copy(endtime = normalizedEnd)
+                        }
+                }
+                
+                // Check if first word contains voice tag and extract it
+                var voiceTag: String? = null
+                if (words.isNotEmpty()) {
+                    val firstWordText = words.first().text
+                    val matcher = voiceTagPattern.matcher(firstWordText)
+                    if (matcher.matches()) {
+                        voiceTag = matcher.group(1)?.lowercase()
+                        val cleanedText = matcher.group(2)?.trim() ?: ""
+                        // Replace first word with cleaned text (without voice tag)
+                        if (cleanedText.isNotEmpty()) {
+                            words = listOf(
+                                words.first().copy(text = cleanedText)
+                            ) + words.drop(1)
+                        } else {
+                            // If cleaned text is empty, remove the first word entirely
+                            words = words.drop(1)
+                        }
+                    }
+                }
+                
+                if (words.isNotEmpty()) {
+                    val backgroundTranslation = line.backgroundText
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotEmpty() }
+                        ?.joinToString("\n")
+                        ?.takeIf { it.isNotEmpty() }
+
+                    val firstWordTimestamp = words.first().timestamp
+                    val lastWordEndtime = words.maxOfOrNull { it.endtime } ?: firstWordTimestamp
+                    val lineStart = maxOf(0L, line.timestamp ?: firstWordTimestamp)
+                    val lineEnd = maxOf(line.endtime ?: 0L, lastWordEndtime, lineStart)
+
+                    WordByWordLyricLine(
+                        words = words,
+                        lineTimestamp = lineStart,
+                        lineEndtime = lineEnd,
+                        background = line.background ?: false,
+                        voiceTag = voiceTag,
+                        translation = backgroundTranslation
+                    )
+                } else {
+                    null
+                }
+            }
+
+            mergeSupplementalLines(parsedLines)
+                .sortedWith(compareBy<WordByWordLyricLine> { it.lineTimestamp }.thenBy { it.lineEndtime })
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing Rhythm word-by-word lyrics", e)
+            emptyList()
+        }
+    }
+
+    private fun mergeSupplementalLines(lines: List<WordByWordLyricLine>): List<WordByWordLyricLine> {
+        if (lines.size < 2) return lines
+
+        val merged = mutableListOf<WordByWordLyricLine>()
+
+        lines.forEach { candidate ->
+            val previous = merged.lastOrNull()
+            if (previous != null && isSameLyricMoment(previous, candidate)) {
+                if (isLikelyDuplicateMainLine(previous, candidate)) {
+                    merged[merged.lastIndex] = mergeDuplicateMainLines(previous, candidate)
+                    return@forEach
+                }
+
+                val mainLine = choosePreferredMainLine(previous, candidate)
+                val supplementalLine = if (mainLine === previous) candidate else previous
+                val supplementalKind = inferSupplementalKind(
+                    mainText = mainLine.asDisplayText(),
+                    candidateText = supplementalLine.asDisplayText(),
+                    candidateBackground = supplementalLine.background
+                )
+
+                if (supplementalKind != null) {
+                    merged[merged.lastIndex] = mergeMainWithSupplemental(mainLine, supplementalLine, supplementalKind)
+                    return@forEach
+                }
+            }
+
+            merged += candidate
+        }
+
+        return merged
+    }
+
+    private fun isSameLyricMoment(previous: WordByWordLyricLine, candidate: WordByWordLyricLine): Boolean {
+        val startDiff = abs(previous.lineTimestamp - candidate.lineTimestamp)
+        return startDiff <= 60L
+    }
+
+    private fun isLikelyDuplicateMainLine(previous: WordByWordLyricLine, candidate: WordByWordLyricLine): Boolean {
+        val previousCanonical = canonicalText(previous.asDisplayText())
+        val candidateCanonical = canonicalText(candidate.asDisplayText())
+        if (previousCanonical.isEmpty() || candidateCanonical.isEmpty()) return false
+        return previousCanonical == candidateCanonical
+    }
+
+    private fun choosePreferredMainLine(
+        first: WordByWordLyricLine,
+        second: WordByWordLyricLine
+    ): WordByWordLyricLine {
+        if (first.background != second.background) {
+            return if (!first.background) first else second
+        }
+
+        val firstScore = lineQualityScore(first)
+        val secondScore = lineQualityScore(second)
+
+        return when {
+            secondScore > firstScore -> second
+            firstScore > secondScore -> first
+            lineTimingSpan(second) > lineTimingSpan(first) -> second
+            else -> first
+        }
+    }
+
+    private fun mergeMainWithSupplemental(
+        main: WordByWordLyricLine,
+        supplemental: WordByWordLyricLine,
+        kind: SupplementalLineKind
+    ): WordByWordLyricLine {
+        val mainCanonical = canonicalText(main.asDisplayText())
+        val supplementalText = stripSupplementalDelimiters(supplemental.asDisplayText())
+        val supplementalCanonical = canonicalText(supplementalText)
+
+        var translation = mergeSupplementalField(main.translation, supplemental.translation)
+        var romanization = mergeSupplementalField(main.romanization, supplemental.romanization)
+
+        if (supplementalCanonical.isNotEmpty() && supplementalCanonical != mainCanonical) {
+            when (kind) {
+                SupplementalLineKind.TRANSLATION -> {
+                    translation = appendSupplementalUnique(translation, supplementalText).takeIf { it.isNotBlank() }
+                }
+
+                SupplementalLineKind.ROMANIZATION -> {
+                    romanization = appendSupplementalUnique(romanization, supplementalText).takeIf { it.isNotBlank() }
+                }
+            }
+        }
+
+        return main.copy(
+            lineTimestamp = minOf(main.lineTimestamp, supplemental.lineTimestamp),
+            lineEndtime = maxLineEnd(main, supplemental),
+            background = main.background && supplemental.background,
+            voiceTag = main.voiceTag ?: supplemental.voiceTag,
+            translation = translation,
+            romanization = romanization
+        )
+    }
+
+    private fun mergeDuplicateMainLines(previous: WordByWordLyricLine, candidate: WordByWordLyricLine): WordByWordLyricLine {
+        val preferred = if (lineQualityScore(candidate) > lineQualityScore(previous)) candidate else previous
+        val secondary = if (preferred === previous) candidate else previous
+
+        return preferred.copy(
+            lineTimestamp = minOf(previous.lineTimestamp, candidate.lineTimestamp),
+            lineEndtime = maxLineEnd(previous, candidate),
+            background = preferred.background && secondary.background,
+            voiceTag = preferred.voiceTag ?: secondary.voiceTag,
+            translation = mergeSupplementalField(preferred.translation, secondary.translation),
+            romanization = mergeSupplementalField(preferred.romanization, secondary.romanization)
+        )
+    }
+
+    private fun lineQualityScore(line: WordByWordLyricLine): Int {
+        if (line.words.isEmpty()) return 0
+
+        val nonBlankWords = line.words.count { it.text.isNotBlank() }
+        val distinctWordStarts = line.words.map { it.timestamp }.distinct().size
+        val advancingStarts = line.words.zipWithNext().count { (first, second) ->
+            second.timestamp > first.timestamp
+        }
+        val positiveDurations = line.words.count { it.endtime > it.timestamp }
+        val partWords = line.words.count { it.isPart }
+        val hasSupplementalMeta = !line.translation.isNullOrBlank() || !line.romanization.isNullOrBlank()
+
+        return (if (!line.background) 20 else 0) +
+            (distinctWordStarts * 32) +
+            (advancingStarts * 24) +
+            (partWords * 16) +
+            (positiveDurations * 8) +
+            (nonBlankWords * 2) +
+            (if (hasSupplementalMeta) 6 else 0)
+    }
+
+    private fun lineTimingSpan(line: WordByWordLyricLine): Long {
+        if (line.words.isEmpty()) return (line.lineEndtime - line.lineTimestamp).coerceAtLeast(0L)
+        val minWordTimestamp = line.words.minOf { it.timestamp }
+        val maxWordEnd = line.words.maxOf { it.endtime }
+        return (maxWordEnd - minWordTimestamp).coerceAtLeast(0L)
+    }
+
+    private fun maxLineEnd(first: WordByWordLyricLine, second: WordByWordLyricLine): Long {
+        val firstWordEnd = first.words.maxOfOrNull { it.endtime } ?: first.lineEndtime
+        val secondWordEnd = second.words.maxOfOrNull { it.endtime } ?: second.lineEndtime
+        return maxOf(first.lineEndtime, second.lineEndtime, firstWordEnd, secondWordEnd)
+    }
+
+    private fun WordByWordLyricLine.asDisplayText(): String {
+        return words.joinToString(separator = "") { word ->
+            if (word.isPart && word.text.isNotEmpty()) word.text else " ${word.text}"
+        }.trim()
+    }
+
+    private fun canonicalText(text: String): String {
+        return text
+            .lowercase()
+            .filter { it.isLetterOrDigit() }
+    }
+
+    private fun inferSupplementalKind(
+        mainText: String,
+        candidateText: String,
+        candidateBackground: Boolean
+    ): SupplementalLineKind? {
+        val trimmed = candidateText.trim()
+        if (trimmed.isEmpty()) return null
+
+        if (trimmed.startsWith("(") && trimmed.endsWith(")") && trimmed.length > 2) {
+            return SupplementalLineKind.TRANSLATION
+        }
+
+        if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length > 2) {
+            return SupplementalLineKind.ROMANIZATION
+        }
+
+        val mainHasNonAscii = mainText.any { it.code > 127 }
+        val candidateHasNonAscii = trimmed.any { it.code > 127 }
+
+        if (mainHasNonAscii && !candidateHasNonAscii) {
+            return SupplementalLineKind.ROMANIZATION
+        }
+
+        if (!mainHasNonAscii && candidateHasNonAscii) {
+            return SupplementalLineKind.TRANSLATION
+        }
+
+        if (candidateBackground) {
+            return SupplementalLineKind.TRANSLATION
+        }
+
+        return null
+    }
+
+    private fun stripSupplementalDelimiters(text: String): String {
+        val trimmed = text.trim()
+        return when {
+            trimmed.startsWith("(") && trimmed.endsWith(")") && trimmed.length > 2 -> {
+                trimmed.substring(1, trimmed.length - 1).trim()
+            }
+
+            trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length > 2 -> {
+                trimmed.substring(1, trimmed.length - 1).trim()
+            }
+
+            else -> trimmed
+        }
+    }
+
+    private fun appendSupplementalUnique(existing: String?, incoming: String): String {
+        val incomingTrimmed = incoming.trim()
+        if (incomingTrimmed.isEmpty()) return existing.orEmpty()
+
+        val existingLines = existing
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toMutableSet()
+            ?: mutableSetOf()
+
+        if (incomingTrimmed in existingLines) {
+            return existing.orEmpty().ifEmpty { incomingTrimmed }
+        }
+
+        return if (existing.isNullOrBlank()) {
+            incomingTrimmed
+        } else {
+            "$existing\n$incomingTrimmed"
+        }
+    }
+
+    private fun mergeSupplementalField(primary: String?, secondary: String?): String? {
+        val merged = appendSupplementalUnique(primary, secondary.orEmpty())
+        return merged.takeIf { it.isNotBlank() }
+    }
+    
+    /**
+     * Convert word-by-word lyrics to plain text (for display when word highlighting is not needed)
+     */
+    fun toPlainText(wordByWordLines: List<WordByWordLyricLine>): String {
+        return wordByWordLines.joinToString("\n") { line ->
+            line.words.joinToString("") { word ->
+                if (word.isPart && word.text.isNotEmpty()) {
+                    word.text // syllable, no space before
+                } else {
+                    " ${word.text}"
+                }
+            }.trim()
+        }
+    }
+    
+    /**
+     * Convert word-by-word lyrics to LRC format (for compatibility)
+     */
+    fun toLRCFormat(wordByWordLines: List<WordByWordLyricLine>): String {
+        return wordByWordLines.joinToString("\n") { line ->
+            val timestamp = formatLRCTimestamp(line.lineTimestamp)
+            val text = line.words.joinToString("") { word ->
+                if (word.isPart && word.text.isNotEmpty()) {
+                    word.text
+                } else {
+                    " ${word.text}"
+                }
+            }.trim()
+            "[$timestamp]$text"
+        }
+    }
+    
+    private fun formatLRCTimestamp(milliseconds: Long): String {
+        val totalSeconds = milliseconds / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        val millis = (milliseconds % 1000) / 10
+        return String.format("%02d:%02d.%02d", minutes, seconds, millis)
+    }
+}
+
+/**
+ * Represents a line of lyrics with word-level timing
+ */
+data class WordByWordLyricLine(
+    val words: List<WordByWordWord>,
+    val lineTimestamp: Long,
+    val lineEndtime: Long,
+    val background: Boolean = false,
+    val voiceTag: String? = null, // Voice tag (v1, v2, v3, etc.) for multi-voice lyrics
+    val translation: String? = null,
+    val romanization: String? = null
+)
+
+/**
+ * Represents a single word with precise timing
+ */
+data class WordByWordWord(
+    val text: String,
+    val isPart: Boolean, // true if this is a syllable/part of a split word
+    val timestamp: Long, // start time in milliseconds
+    val endtime: Long // end time in milliseconds
+)

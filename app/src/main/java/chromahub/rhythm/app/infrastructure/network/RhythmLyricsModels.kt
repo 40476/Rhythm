@@ -3,9 +3,9 @@ package chromahub.rhythm.app.network
 import com.google.gson.annotations.SerializedName
 
 /**
- * Apple Music song search result
+ * Rhythm lyrics song search result
  */
-data class AppleMusicSearchResult(
+data class RhythmLyricsSearchResult(
     @SerializedName("id") val id: String,
     @SerializedName("songName") val songName: String?,
     @SerializedName("artistName") val artistName: String?,
@@ -20,22 +20,22 @@ data class AppleMusicSearchResult(
 )
 
 /**
- * Apple Music lyrics response containing word-by-word synchronized lyrics
+ * Rhythm lyrics response containing word-by-word synchronized lyrics
  */
-data class AppleMusicLyricsResponse(
+data class RhythmLyricsResponse(
     @SerializedName("info") val info: String?,
     @SerializedName("type") val type: String?, // "Syllable" for word-by-word
-    @SerializedName("content") val content: List<AppleMusicLyricsLine>?,
+    @SerializedName("content") val content: List<RhythmLyricsLine>?,
     @SerializedName("ttml_content") val ttmlContent: String?,
     @SerializedName("source") val source: String?,
-    @SerializedName("track") val track: AppleMusicTrackInfo?
+    @SerializedName("track") val track: RhythmLyricsTrackInfo?
 )
 
 /**
  * Represents a line of lyrics with word-level synchronization
  */
-data class AppleMusicLyricsLine(
-    @SerializedName("text") val text: List<AppleMusicWord>?,
+data class RhythmLyricsLine(
+    @SerializedName("text") val text: List<RhythmLyricsWord>?,
     @SerializedName("background") val background: Boolean?,
     @SerializedName("backgroundText") val backgroundText: List<String>?,
     @SerializedName("oppositeTurn") val oppositeTurn: Boolean?,
@@ -46,7 +46,7 @@ data class AppleMusicLyricsLine(
 /**
  * Represents a single word or syllable with precise timing
  */
-data class AppleMusicWord(
+data class RhythmLyricsWord(
     @SerializedName("text") val text: String,
     @SerializedName("part") val part: Boolean?, // true if this is part of a split word (syllable)
     @SerializedName("timestamp") val timestamp: Long, // Word start timestamp in milliseconds
@@ -54,9 +54,9 @@ data class AppleMusicWord(
 )
 
 /**
- * Track information from Apple Music
+ * Track information from Rhythm lyrics source
  */
-data class AppleMusicTrackInfo(
+data class RhythmLyricsTrackInfo(
     @SerializedName("albumName") val albumName: String?,
     @SerializedName("artistName") val artistName: String?,
     @SerializedName("name") val name: String?,

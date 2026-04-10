@@ -7,7 +7,7 @@ import kotlinx.parcelize.Parcelize
 data class LyricsData(
     val plainLyrics: String?,
     val syncedLyrics: String?,
-    val wordByWordLyrics: String? = null, // JSON string of Apple Music word-by-word lyrics
+    val wordByWordLyrics: String? = null, // JSON string of Rhythm word-by-word lyrics
     val source: String? = null // Source of lyrics: "LRCLib", "Embedded", "Local File", etc.
 ) : Parcelable {
     

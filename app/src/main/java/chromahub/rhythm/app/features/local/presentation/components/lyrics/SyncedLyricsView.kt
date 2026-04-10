@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,9 +24,81 @@ import chromahub.rhythm.app.R
 import chromahub.rhythm.app.util.LyricLine
 import chromahub.rhythm.app.util.LyricsParser
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+
+private sealed class SyncedLyricsItem {
+    data class Line(val line: LyricLine, val index: Int) : SyncedLyricsItem()
+    data class Gap(val duration: Long, val startTime: Long) : SyncedLyricsItem()
+}
+
+private const val MIN_VOCAL_GAP_MS = 5200L
+private const val LARGE_SCROLL_CATCH_UP_DELTA = 8
+
+private suspend fun LazyListState.animateToSyncedItemWithCatchUp(
+    targetIndex: Int,
+    scrollOffset: Int,
+    lastIndex: Int
+) {
+    val currentIndex = firstVisibleItemIndex
+    val delta = abs(currentIndex - targetIndex)
+
+    if (delta >= LARGE_SCROLL_CATCH_UP_DELTA) {
+        val prePositionIndex = if (targetIndex > currentIndex) {
+            (targetIndex - 1).coerceAtLeast(0)
+        } else {
+            (targetIndex + 1).coerceAtMost(lastIndex)
+        }
+
+        if (prePositionIndex != targetIndex) {
+            scrollToItem(prePositionIndex, scrollOffset = scrollOffset)
+        }
+    }
+
+    animateScrollToItem(targetIndex, scrollOffset = scrollOffset)
+}
+
+private fun buildSyncedLyricsItems(lines: List<LyricLine>): List<SyncedLyricsItem> {
+    if (lines.isEmpty()) return emptyList()
+
+    val intervals = lines.zipWithNext { current, next -> (next.timestamp - current.timestamp).coerceAtLeast(0L) }
+        .filter { it > 0L }
+
+    val medianInterval = if (intervals.isNotEmpty()) {
+        val sorted = intervals.sorted()
+        sorted[sorted.size / 2]
+    } else {
+        2000L
+    }
+
+    val vocalEstimate = (medianInterval * 0.9f).toLong().coerceIn(900L, 2600L)
+    val longGapThreshold = maxOf(MIN_VOCAL_GAP_MS, (medianInterval * 2.4f).toLong())
+
+    return buildList {
+        lines.forEachIndexed { index, line ->
+            add(SyncedLyricsItem.Line(line, index))
+
+            if (index < lines.lastIndex) {
+                val nextLine = lines[index + 1]
+                val intervalToNext = nextLine.timestamp - line.timestamp
+
+                if (intervalToNext >= longGapThreshold) {
+                    val gapStart = line.timestamp + vocalEstimate
+                    val gapDuration = (nextLine.timestamp - gapStart).coerceAtLeast(0L)
+
+                    if (gapDuration >= 1800L) {
+                        add(
+                            SyncedLyricsItem.Gap(
+                                duration = gapDuration,
+                                startTime = gapStart
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun SyncedLyricsView(
@@ -60,10 +133,22 @@ fun SyncedLyricsView(
         }
     }
 
-    val coroutineScope = rememberCoroutineScope()
-    
     // Track previous line for smooth transitions
     val previousLineIndex = remember { mutableIntStateOf(-1) }
+
+    val lyricsItems = remember(parsedLyrics) {
+        buildSyncedLyricsItems(parsedLyrics)
+    }
+
+    val lineToItemIndex = remember(lyricsItems) {
+        buildMap {
+            lyricsItems.forEachIndexed { itemIndex, item ->
+                if (item is SyncedLyricsItem.Line) {
+                    put(item.index, itemIndex)
+                }
+            }
+        }
+    }
     
     // Find current line index more efficiently (using adjustedPlaybackTime for sync offset)
     val currentLineIndex by remember(adjustedPlaybackTime, parsedLyrics) {
@@ -77,9 +162,12 @@ fun SyncedLyricsView(
         if (currentLineIndex >= 0 && parsedLyrics.isNotEmpty() && currentLineIndex != previousLineIndex.intValue) {
             previousLineIndex.intValue = currentLineIndex
             val offset = listState.layoutInfo.viewportSize.height / 3
-            coroutineScope.launch {
-                listState.animateScrollToItem(currentLineIndex, scrollOffset = -offset)
-            }
+            val targetItemIndex = lineToItemIndex[currentLineIndex] ?: currentLineIndex
+            listState.animateToSyncedItemWithCatchUp(
+                targetIndex = targetItemIndex,
+                scrollOffset = -offset,
+                lastIndex = lyricsItems.lastIndex
+            )
         }
     }
 
@@ -106,19 +194,30 @@ fun SyncedLyricsView(
             },
             contentPadding = PaddingValues(vertical = 30.dp)
         ) {
-            itemsIndexed(parsedLyrics) { index, line ->
-                SyncedLyricItem(
-                    line = line,
-                    index = index,
-                    currentLineIndex = currentLineIndex,
-                    currentPlaybackTime = adjustedPlaybackTime, // Use adjusted time for progress calculation
-                    parsedLyrics = parsedLyrics,
-                    onSeek = onSeek,
-                    showTranslation = showTranslation,
-                    showRomanization = showRomanization,
-                    textSizeMultiplier = textSizeMultiplier,
-                    textAlignment = textAlignment
-                )
+            itemsIndexed(lyricsItems) { _, item ->
+                when (item) {
+                    is SyncedLyricsItem.Line -> {
+                        SyncedLyricItem(
+                            line = item.line,
+                            index = item.index,
+                            currentLineIndex = currentLineIndex,
+                            currentPlaybackTime = adjustedPlaybackTime,
+                            parsedLyrics = parsedLyrics,
+                            onSeek = onSeek,
+                            showTranslation = showTranslation,
+                            showRomanization = showRomanization,
+                            textSizeMultiplier = textSizeMultiplier,
+                            textAlignment = textAlignment
+                        )
+                    }
+
+                    is SyncedLyricsItem.Gap -> {
+                        SyncedVocalGapItem(
+                            item = item,
+                            currentPlaybackTime = adjustedPlaybackTime
+                        )
+                    }
+                }
             }
             
             // Display lyrics source at the bottom
@@ -136,6 +235,66 @@ fun SyncedLyricsView(
             }
         }
     }
+}
+
+@Composable
+private fun SyncedVocalGapItem(
+    item: SyncedLyricsItem.Gap,
+    currentPlaybackTime: Long
+) {
+    val isCurrentGap = currentPlaybackTime >= item.startTime &&
+        currentPlaybackTime < item.startTime + item.duration
+
+    val gapHeight = (item.duration / 1000f).coerceIn(18f, 66f)
+
+    val iconScale by animateFloatAsState(
+        targetValue = if (isCurrentGap) 1.4f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessVeryLow
+        ),
+        label = "syncedGapScale"
+    )
+
+    val iconAlpha by animateFloatAsState(
+        targetValue = if (isCurrentGap) 0.82f else 0.3f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "syncedGapAlpha"
+    )
+
+    Spacer(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(gapHeight.dp)
+            .padding(horizontal = 28.dp)
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "♪",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = iconAlpha),
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale
+                scaleY = iconScale
+            }
+        )
+    }
+
+    Spacer(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(gapHeight.dp)
+            .padding(horizontal = 28.dp)
+    )
 }
 
 /**
@@ -170,7 +329,7 @@ private fun SyncedLyricItem(
         } else 0f
     } else 0f
     
-    // Smooth scale animation with spring physics - Apple Music style
+    // Smooth scale animation with spring physics - Rhythm style
     val scale by animateFloatAsState(
         targetValue = when {
             isCurrentLine -> 1.10f
@@ -210,7 +369,7 @@ private fun SyncedLyricItem(
         ),
         label = "lineTranslationY_$index"
     )
-    
+
     // Color transition for active line with voice-specific colors
     val textColor = when {
         isCurrentLine -> {
@@ -282,10 +441,11 @@ private fun SyncedLyricItem(
             Text(
                 text = line.translation,
                 style = MaterialTheme.typography.bodyMedium.copy(
+                    fontStyle = FontStyle.Italic,
                     fontWeight = if (isCurrentLine) FontWeight.Medium else FontWeight.Normal,
                     lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.4f
                 ),
-                color = textColor.copy(alpha = if (isCurrentLine) 0.75f else 0.6f),
+                color = MaterialTheme.colorScheme.tertiary.copy(alpha = if (isCurrentLine) 0.84f else 0.62f),
                 textAlign = textAlignment,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -307,7 +467,9 @@ private fun SyncedLyricItem(
                     alpha = if (isCurrentLine) 0.65f else 0.5f
                 ),
                 textAlign = textAlignment,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (isCurrentLine) 0.9f else 0.7f)
             )
         }
     }

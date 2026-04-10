@@ -57,7 +57,7 @@ import chromahub.rhythm.app.util.AudioFormatDetector
 import chromahub.rhythm.app.util.LyricsParser
 import chromahub.rhythm.app.util.EnhancedLyricLine
 import chromahub.rhythm.app.util.EnhancedWord
-// AppleMusicLyricsParser import removed - kept for future re-implementation
+// RhythmLyricsParser import removed - kept for future re-implementation
 import android.content.SharedPreferences
 import androidx.room.withTransaction
 import chromahub.rhythm.app.features.local.data.database.RhythmDatabase
@@ -355,7 +355,7 @@ class MusicRepository(context: Context) {
     private val deezerApiService = NetworkClient.deezerApiService
     private val lrclibApiService = NetworkClient.lrclibApiService
     private val ytmusicApiService = NetworkClient.ytmusicApiService
-    // Apple Music API service removed - can be re-added in future
+    // Rhythm lyrics API service removed - can be re-added in future
     private val genericHttpClient = NetworkClient.genericHttpClient
     
     // Note: API services can be null if disabled via BuildConfig
@@ -3313,7 +3313,7 @@ class MusicRepository(context: Context) {
                     val enhancedLines = parseKaraokeLyrics(cleanedLyrics)
                     
                     if (enhancedLines.isNotEmpty()) {
-                        // Convert to Apple Music word-by-word format (JSON)
+                        // Convert to Rhythm word-by-word format (JSON)
                         val wordByWordJson = convertEnhancedLRCToWordByWord(enhancedLines)
                         
                         // Also extract plain text and line-synced LRC
@@ -3342,7 +3342,7 @@ class MusicRepository(context: Context) {
                     val enhancedLines = LyricsParser.parseEnhancedLRC(cleanedLyrics)
                     
                     if (enhancedLines.isNotEmpty()) {
-                        // Convert to Apple Music word-by-word format (JSON)
+                        // Convert to Rhythm word-by-word format (JSON)
                         val wordByWordJson = convertEnhancedLRCToWordByWord(enhancedLines)
                         
                         // Also extract plain text and line-synced LRC
@@ -3464,10 +3464,10 @@ class MusicRepository(context: Context) {
     }
     
     /**
-     * Convert Enhanced LRC format to Apple Music word-by-word JSON format
+    * Convert Enhanced LRC format to Rhythm word-by-word JSON format
      */
     private fun convertEnhancedLRCToWordByWord(enhancedLines: List<EnhancedLyricLine>): String {
-        val appleMusicLines = enhancedLines.map { line: EnhancedLyricLine ->
+        val rhythmWordLines = enhancedLines.map { line: EnhancedLyricLine ->
             val words = line.words.map { word: EnhancedWord ->
                 mapOf(
                     "text" to word.text,
@@ -3485,7 +3485,7 @@ class MusicRepository(context: Context) {
             )
         }
         
-        return com.google.gson.Gson().toJson(appleMusicLines)
+        return com.google.gson.Gson().toJson(rhythmWordLines)
     }
     
     /**
@@ -3950,7 +3950,7 @@ class MusicRepository(context: Context) {
                 val enhancedLines = LyricsParser.parseEnhancedLRC(lrcContent)
                 
                 if (enhancedLines.isNotEmpty()) {
-                    // Convert to Apple Music word-by-word format (JSON)
+                    // Convert to Rhythm word-by-word format (JSON)
                     val wordByWordJson = convertEnhancedLRCToWordByWord(enhancedLines)
                     
                     // Also extract plain text and line-synced LRC

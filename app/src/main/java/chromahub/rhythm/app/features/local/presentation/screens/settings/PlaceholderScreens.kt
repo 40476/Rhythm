@@ -15316,7 +15316,7 @@ fun LyricsSourceSettingsScreen(onBackClick: () -> Unit) {
                 ),
                 chromahub.rhythm.app.shared.data.model.LyricsSourcePreference.API_FIRST to Triple(
                     "Online First",
-                    "Prefer online APIs (Apple Music, LRCLib), fallback to embedded",
+                    "Prefer online APIs (Rhythm word-by-word, LRCLib), fallback to embedded",
                     Icons.Default.CloudQueue
                 ),
                 chromahub.rhythm.app.shared.data.model.LyricsSourcePreference.LOCAL_FIRST to Triple(
@@ -15452,7 +15452,7 @@ fun LyricsSourceSettingsScreen(onBackClick: () -> Unit) {
                         Text(
                             text = "• Embedded lyrics are stored in your audio files\n" +
                                     "• Online APIs provide high-quality synced lyrics\n" +
-                                    "• Apple Music offers word-by-word sync\n" +
+                                "• Rhythm offers word-by-word sync\n" +
                                     "• LRCLib provides free line-by-line sync",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onTertiaryContainer,

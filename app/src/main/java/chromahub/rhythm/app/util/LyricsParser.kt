@@ -58,15 +58,28 @@ object LyricsParser {
      */
     private fun separateTranslation(lines: List<String>): Triple<String, String?, String?> {
         if (lines.isEmpty()) return Triple("", null, null)
-        if (lines.size == 1) return Triple(lines[0], null, null)
-        
-        val mainText = lines[0]
+
+        val normalizedLines = lines
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (normalizedLines.isEmpty()) return Triple("", null, null)
+        if (normalizedLines.size == 1) return Triple(normalizedLines[0], null, null)
+
+        val mainIndex = normalizedLines.indices
+            .maxByOrNull { mainLineScore(normalizedLines[it]) }
+            ?: 0
+
+        val mainText = normalizedLines[mainIndex]
         var translation: String? = null
         var romanization: String? = null
         
-        // Process additional lines
-        for (i in 1 until lines.size) {
-            val line = lines[i].trim()
+        // Process additional lines relative to selected main text
+        normalizedLines.forEachIndexed { index, rawLine ->
+            if (index == mainIndex) return@forEachIndexed
+
+            val line = rawLine.trim()
+            if (line.isEmpty()) return@forEachIndexed
             
             // Detect translation patterns:
             // 1. Parentheses: (Translation text)
@@ -74,28 +87,164 @@ object LyricsParser {
             // 3. Other languages (contains non-ASCII characters different from main text)
             when {
                 line.startsWith("(") && line.endsWith(")") -> {
-                    translation = line.substring(1, line.length - 1).trim()
+                    translation = appendSupplementalUnique(
+                        translation,
+                        line.substring(1, line.length - 1).trim()
+                    ).ifBlank { null }
                 }
                 line.startsWith("[") && line.endsWith("]") -> {
-                    romanization = line.substring(1, line.length - 1).trim()
+                    romanization = appendSupplementalUnique(
+                        romanization,
+                        line.substring(1, line.length - 1).trim()
+                    ).ifBlank { null }
                 }
                 // If main text has non-ASCII and this line has ASCII, it's likely romanization
-                mainText.any { it.toInt() > 127 } && line.all { it.toInt() <= 127 || it.isWhitespace() } -> {
-                    romanization = line
+                mainText.any { it.code > 127 } && line.all { it.code <= 127 || it.isWhitespace() } -> {
+                    romanization = appendSupplementalUnique(romanization, line).ifBlank { null }
+                }
+                // If main text is ASCII and this line has non-ASCII, it's likely translation
+                mainText.all { it.code <= 127 || it.isWhitespace() } && line.any { it.code > 127 } -> {
+                    translation = appendSupplementalUnique(translation, line).ifBlank { null }
                 }
                 // Otherwise, treat as translation
                 else -> {
-                    if (translation == null) {
-                        translation = line
-                    } else {
-                        // Append to existing translation
-                        translation += "\n" + line
-                    }
+                    translation = appendSupplementalUnique(translation, line).ifBlank { null }
                 }
             }
         }
         
         return Triple(mainText, translation, romanization)
+    }
+
+    private fun mainLineScore(line: String): Int {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return Int.MIN_VALUE
+
+        var score = 0
+
+        if (trimmed.startsWith("(") && trimmed.endsWith(")") && trimmed.length > 2) {
+            score -= 120
+        }
+
+        if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length > 2) {
+            score -= 100
+        }
+
+        if (voiceTagInLinePattern.matcher(trimmed).matches()) {
+            score += 20
+        }
+
+        val nonWhitespaceChars = trimmed.count { !it.isWhitespace() }
+        val lettersDigits = trimmed.count { it.isLetterOrDigit() }
+        val singleCharTokens = trimmed.split(Regex("\\s+")).count { it.length == 1 }
+
+        score += nonWhitespaceChars
+        score += lettersDigits * 2
+        score -= singleCharTokens * 3
+
+        return score
+    }
+
+    private fun isLikelySupplementalLine(mainText: String, candidateLine: String): Boolean {
+        val trimmedCandidate = candidateLine.trim()
+        if (trimmedCandidate.isEmpty()) return false
+
+        if (trimmedCandidate.startsWith("(") && trimmedCandidate.endsWith(")") && trimmedCandidate.length > 2) {
+            return true
+        }
+
+        if (trimmedCandidate.startsWith("[") && trimmedCandidate.endsWith("]") && trimmedCandidate.length > 2) {
+            return true
+        }
+
+        val mainHasNonAscii = mainText.any { it.code > 127 }
+        val candidateHasNonAscii = trimmedCandidate.any { it.code > 127 }
+        return mainHasNonAscii != candidateHasNonAscii
+    }
+
+    private fun isLikelyDuplicateLine(mainText: String, candidateLine: String): Boolean {
+        val mainCanonical = canonicalText(mainText)
+        val candidateCanonical = canonicalText(candidateLine)
+        if (mainCanonical.isEmpty() || candidateCanonical.isEmpty()) return false
+
+        if (mainCanonical == candidateCanonical) return true
+
+        val minLength = minOf(mainCanonical.length, candidateCanonical.length)
+        return minLength >= 6 && (
+            mainCanonical.contains(candidateCanonical) ||
+                candidateCanonical.contains(mainCanonical)
+            )
+    }
+
+    private fun pickPreferredDuplicateMain(existingMain: String, candidateMain: String): String {
+        val existing = existingMain.trim()
+        val candidate = candidateMain.trim()
+
+        val existingScore = mainLineScore(existing)
+        val candidateScore = mainLineScore(candidate)
+
+        if (candidateScore > existingScore + 2) return candidate
+        if (existingScore > candidateScore + 2) return existing
+
+        val existingSpaceCount = existing.count { it.isWhitespace() }
+        val candidateSpaceCount = candidate.count { it.isWhitespace() }
+
+        return when {
+            candidateSpaceCount < existingSpaceCount -> candidate
+            candidateSpaceCount > existingSpaceCount -> existing
+            candidate.length < existing.length -> candidate
+            else -> existing
+        }
+    }
+
+    private fun canonicalText(text: String): String {
+        return text
+            .lowercase()
+            .filter { it.isLetterOrDigit() }
+    }
+
+    private fun appendSupplementalUnique(existing: String?, incoming: String): String {
+        val incomingTrimmed = incoming.trim()
+        if (incomingTrimmed.isEmpty()) return existing.orEmpty()
+
+        val incomingCanonical = canonicalText(incomingTrimmed)
+        val existingCanonicals = existing
+            ?.lineSequence()
+            ?.map { canonicalText(it) }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            ?: emptySet()
+
+        if (incomingCanonical.isNotEmpty() && incomingCanonical in existingCanonicals) {
+            return existing.orEmpty()
+        }
+
+        return if (existing.isNullOrBlank()) {
+            incomingTrimmed
+        } else {
+            "$existing\n$incomingTrimmed"
+        }
+    }
+
+    private fun mergeSupplemental(existing: String?, incoming: String?): String? {
+        val merged = appendSupplementalUnique(existing, incoming.orEmpty())
+        return merged.takeIf { it.isNotBlank() }
+    }
+
+    private fun mergeDuplicateLyricLines(lines: List<LyricLine>): List<LyricLine> {
+        return lines
+            .groupBy { it.timestamp to it.text }
+            .values
+            .map { duplicates ->
+                duplicates.reduce { acc, item ->
+                    acc.copy(
+                        voiceTag = acc.voiceTag ?: item.voiceTag,
+                        translation = mergeSupplemental(acc.translation, item.translation),
+                        romanization = mergeSupplemental(acc.romanization, item.romanization)
+                    )
+                }
+            }
+            .sortedBy { it.timestamp }
     }
 
     /**
@@ -212,6 +361,42 @@ object LyricsParser {
             }
 
             if (timestamps.isNotEmpty()) {
+                val text = if (lastMatchEnd < trimmedLine.length) {
+                    trimmedLine.substring(lastMatchEnd).trim()
+                } else {
+                    ""
+                }
+
+                val isSameTimestampPair =
+                    pendingTimestamps.isNotEmpty() &&
+                        timestamps == pendingTimestamps &&
+                        pendingTextLines.isNotEmpty() &&
+                        text.isNotEmpty()
+
+                if (isSameTimestampPair) {
+                    val existingMain = pendingTextLines.first()
+                    val preferredMain = pickPreferredDuplicateMain(existingMain, text)
+                    val alternateLine = if (preferredMain == text) existingMain else text
+
+                    if (isLikelyDuplicateLine(preferredMain, alternateLine)) {
+                        pendingTextLines[0] = preferredMain
+                        continue
+                    }
+
+                    if (isLikelySupplementalLine(preferredMain, alternateLine)) {
+                        pendingTextLines[0] = preferredMain
+                        val alternateTrimmed = alternateLine.trim()
+                        val alreadyExists = pendingTextLines
+                            .drop(1)
+                            .any { canonicalText(it) == canonicalText(alternateTrimmed) }
+
+                        if (alternateTrimmed.isNotEmpty() && !alreadyExists) {
+                            pendingTextLines.add(alternateTrimmed)
+                        }
+                        continue
+                    }
+                }
+
                 // This line has timestamps - process any pending text first
                 if (pendingTimestamps.isNotEmpty() && pendingTextLines.isNotEmpty()) {
                     // Separate main lyrics from translations/romanizations
@@ -224,14 +409,7 @@ object LyricsParser {
                     }
                     pendingTextLines.clear()
                 }
-                
-                // Extract lyrics text after all timestamps
-                val text = if (lastMatchEnd < trimmedLine.length) {
-                    trimmedLine.substring(lastMatchEnd).trim()
-                } else {
-                    ""
-                }
-                
+
                 // Store timestamps and initial text
                 pendingTimestamps = timestamps
                 if (text.isNotEmpty()) {
@@ -257,10 +435,8 @@ object LyricsParser {
             }
         }
 
-        // Sort by timestamp and remove duplicates
-        return lyricLines
-            .sortedBy { it.timestamp }
-            .distinctBy { "${it.timestamp}_${it.text}" } // Remove exact duplicates
+        // Sort by timestamp and merge duplicate lyric lines while preserving richer metadata.
+        return mergeDuplicateLyricLines(lyricLines.sortedBy { it.timestamp })
     }
     
     /**

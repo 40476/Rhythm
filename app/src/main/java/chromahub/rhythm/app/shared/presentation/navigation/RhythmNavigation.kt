@@ -1571,7 +1571,7 @@ fun ModeSelectorScreen(
             // Streaming Mode Card
             ModeCard(
                 title = "Streaming",
-                description = "Stream from Spotify, Apple Music & more",
+                description = "Stream from Spotify and more",
                 icon = if (currentMode == AppMode.STREAMING) Icons.Filled.CloudQueue else Icons.Outlined.CloudQueue,
                 isSelected = currentMode == AppMode.STREAMING,
                 onClick = { onModeSelected(AppMode.STREAMING) },

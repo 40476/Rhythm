@@ -2061,7 +2061,7 @@ fun PlayerScreen(
                                                     }
                                                     
                                                     if (wordByWordLyrics != null) {
-                                                        // Use WordByWordLyricsView for Apple Music lyrics
+                                                        // Use WordByWordLyricsView for Rhythm word-by-word lyrics
                                                         WordByWordLyricsView(
                                                             wordByWordLyrics = wordByWordLyrics,
                                                             currentPlaybackTime = currentTimeMs,

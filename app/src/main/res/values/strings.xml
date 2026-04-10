@@ -2636,7 +2636,7 @@
     <string name="settings_local_files">Local Files</string>
     <string name="settings_local_files_desc">Play music from your device storage</string>
     <string name="settings_streaming_services">Streaming Services</string>
-    <string name="settings_streaming_services_desc">Stream from Spotify, Apple Music, etc. (Coming soon)</string>
+    <string name="settings_streaming_services_desc">Stream from Spotify and more (Coming soon)</string>
     <string name="settings_note">Note</string>
 
     <!-- Backup &amp; Restore -->
