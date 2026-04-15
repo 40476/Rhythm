@@ -1032,12 +1032,23 @@ class MusicRepository(context: Context) {
         val raw = value?.trim() ?: return value
         if (raw.isBlank()) return raw
 
-        val looksMojibake = raw.contains('Ã') || raw.contains('Â') || raw.contains("â")
-        if (!looksMojibake) return raw
+        val hasCommonUtf8MojibakeMarkers =
+            raw.contains('Ã') ||
+                raw.contains('Â') ||
+                raw.contains("\u00E2\u20AC")
+        if (!hasCommonUtf8MojibakeMarkers) return raw
+
+        val hasNonLatin1CodePoints = raw.any { it.code > 0xFF }
+        if (hasNonLatin1CodePoints && !raw.contains("\u00E2\u20AC")) {
+            // Avoid damaging valid Unicode (for example Vietnamese) with a forced Latin-1 round-trip.
+            return raw
+        }
 
         return runCatching {
             val repaired = String(raw.toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8)
-            if (repaired.isBlank()) raw else repaired
+            val repairedHasMoreReplacementChars =
+                repaired.count { it == '\uFFFD' } > raw.count { it == '\uFFFD' }
+            if (repaired.isBlank() || repairedHasMoreReplacementChars) raw else repaired
         }.getOrDefault(raw)
     }
 
