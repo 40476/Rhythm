@@ -461,7 +461,8 @@ fun SearchScreen(
         isCompactWidth -> 148.dp
         else -> 164.dp
     }
-    val controlsBottomPadding = if (isCompactWidth) 2.dp else 4.dp
+    val miniPlayerBottomPadding = LocalMiniPlayerPadding.current.calculateBottomPadding()
+    val controlsBottomPadding = miniPlayerBottomPadding + if (isCompactWidth) 2.dp else 4.dp
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -584,6 +585,7 @@ fun SearchScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .imePadding()
+                    .padding(bottom = miniPlayerBottomPadding)
                     .height(controlsScrimHeight)
                     .graphicsLayer {
                         alpha = controlsScrimAlpha
@@ -2444,9 +2446,19 @@ private fun DefaultSearchContent(
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current // Get the HapticFeedback instance
+    val isCompactWidth = LocalConfiguration.current.screenWidthDp < 380
+    val miniPlayerBottomPadding = LocalMiniPlayerPadding.current.calculateBottomPadding()
+    val bottomControlsClearance = if (isCompactWidth) 172.dp else 188.dp
+    val contentBottomPadding = miniPlayerBottomPadding + bottomControlsClearance
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 16.dp,
+            bottom = contentBottomPadding
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Search History with improved design

@@ -4220,6 +4220,20 @@ fun AboutScreen(
                                 context = context
                             )
                             CommunityMember(
+                                name = "linsui",
+                                role = "Manages updates on F-Droid",
+                                githubUsername = "linsui",
+                                avatarUrl = "https://github.com/linsui.png",
+                                context = context
+                            )
+                            CommunityMember(
+                                name = "Licaon_Kter",
+                                role = "Manages updates on F-Droid",
+                                githubUsername = "licaon-kter",
+                                avatarUrl = "https://github.com/licaon-kter.png",
+                                context = context
+                            )
+                            CommunityMember(
                                 name = "Christian",
                                 role = "Collab & Project Booming's Lead Dev",
                                 githubUsername = "mardous",
