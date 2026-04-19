@@ -46,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,63 @@ import chromahub.rhythm.app.shared.presentation.components.common.ButtonGroupSty
 import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveButtonGroup
 import chromahub.rhythm.app.shared.presentation.components.common.ExpressiveGroupButton
 import chromahub.rhythm.app.util.ImageUtils
+import chromahub.rhythm.app.util.MediaUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+private fun resolveBatchEditArtworkUri(context: android.content.Context, song: Song): Uri? {
+    val currentArtworkUri = song.artworkUri
+
+    if (currentArtworkUri != null &&
+        !isMediaStoreAlbumArtworkUriForBatch(currentArtworkUri) &&
+        isUsableArtworkUriForBatch(currentArtworkUri)
+    ) {
+        return currentArtworkUri
+    }
+
+    val cachedLossless = MediaUtils.getCachedEmbeddedAlbumArtUri(
+        cacheDir = context.cacheDir,
+        songUri = song.uri,
+        lossless = true
+    )
+    if (cachedLossless != null) {
+        return cachedLossless
+    }
+
+    val cachedLossy = MediaUtils.getCachedEmbeddedAlbumArtUri(
+        cacheDir = context.cacheDir,
+        songUri = song.uri,
+        lossless = false
+    )
+    if (cachedLossy != null) {
+        return cachedLossy
+    }
+
+    val extractedEmbedded = MediaUtils.extractEmbeddedAlbumArt(
+        context = context,
+        songUri = song.uri,
+        cacheDir = context.cacheDir,
+        lossless = false
+    )
+    if (extractedEmbedded != null) {
+        return extractedEmbedded
+    }
+
+    return currentArtworkUri
+}
+
+private fun isMediaStoreAlbumArtworkUriForBatch(uri: Uri): Boolean {
+    val value = uri.toString().lowercase()
+    return value.startsWith("content://media/") && value.contains("/audio/albumart")
+}
+
+private fun isUsableArtworkUriForBatch(uri: Uri): Boolean {
+    return when (uri.scheme) {
+        "file", null -> uri.path?.let { File(it).exists() } == true
+        else -> true
+    }
+}
 
 /**
  * Bottom sheet for batch editing metadata tags on multiple selected songs.
@@ -117,10 +175,25 @@ fun BatchEditTagsSheet(
         editArtwork
     ).count { it }
 
+    val previewSong = selectedSongs.firstOrNull()
+    var resolvedArtworkPreviewUri by remember(previewSong?.id, previewSong?.artworkUri) {
+        mutableStateOf(previewSong?.artworkUri)
+    }
+
+    LaunchedEffect(previewSong?.id, previewSong?.artworkUri, previewSong?.uri) {
+        resolvedArtworkPreviewUri = if (previewSong == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                resolveBatchEditArtworkUri(context, previewSong)
+            }
+        }
+    }
+
     val artworkPreviewUri = when {
         removeArtwork -> null
         selectedImageUri != null -> selectedImageUri
-        else -> selectedSongs.firstOrNull()?.artworkUri
+        else -> resolvedArtworkPreviewUri
     }
 
     fun submitBatchChanges() {

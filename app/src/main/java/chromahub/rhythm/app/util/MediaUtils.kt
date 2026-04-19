@@ -2125,33 +2125,57 @@ object MediaUtils {
      */
     fun getCachedEmbeddedAlbumArtUri(cacheDir: File, songUri: Uri, lossless: Boolean = false): Uri? {
         val songKey = buildArtworkCacheKey(songUri)
-        val prefix = if (lossless) "embedded_art_lossless_$songKey" else "embedded_art_$songKey"
+        val primaryPrefix = if (lossless) "embedded_art_lossless_$songKey" else "embedded_art_$songKey"
+        val fallbackPrefix = if (lossless) "embedded_art_$songKey" else "embedded_art_lossless_$songKey"
 
         val artworkCacheDir = File(cacheDir, EMBEDDED_ARTWORK_CACHE_DIR)
         val extensions = listOf("jpg", "png", "webp", "gif", "bmp", "img")
-        for (ext in extensions) {
-            val candidate = File(artworkCacheDir, "$prefix.$ext")
-            if (candidate.exists() && candidate.length() > 0L) {
-                return candidate.toUri()
-            }
+        val modernCandidate = findFirstExistingArtworkFile(
+            directory = artworkCacheDir,
+            prefixes = listOf(primaryPrefix, fallbackPrefix),
+            extensions = extensions
+        )
+        if (modernCandidate != null) {
+            return modernCandidate.toUri()
         }
 
         val legacyHash = songUri.hashCode()
-        val legacyCandidates = if (lossless) {
-            listOf(
-                File(cacheDir, "embedded_art_lossless_${legacyHash}.jpg"),
-                File(cacheDir, "embedded_art_lossless_${legacyHash}.png")
-            )
+        val primaryLegacyPrefix = if (lossless) {
+            "embedded_art_lossless_$legacyHash"
         } else {
-            listOf(File(cacheDir, "embedded_art_${legacyHash}.jpg"))
+            "embedded_art_$legacyHash"
+        }
+        val fallbackLegacyPrefix = if (lossless) {
+            "embedded_art_$legacyHash"
+        } else {
+            "embedded_art_lossless_$legacyHash"
         }
 
-        for (candidate in legacyCandidates) {
-            if (candidate.exists() && candidate.length() > 0L) {
-                return candidate.toUri()
+        val legacyCandidate = findFirstExistingArtworkFile(
+            directory = cacheDir,
+            prefixes = listOf(primaryLegacyPrefix, fallbackLegacyPrefix),
+            extensions = extensions
+        )
+        if (legacyCandidate != null) {
+            return legacyCandidate.toUri()
+        }
+
+        return null
+    }
+
+    private fun findFirstExistingArtworkFile(
+        directory: File,
+        prefixes: List<String>,
+        extensions: List<String>
+    ): File? {
+        for (prefix in prefixes) {
+            for (ext in extensions) {
+                val candidate = File(directory, "$prefix.$ext")
+                if (candidate.exists() && candidate.length() > 0L) {
+                    return candidate
+                }
             }
         }
-
         return null
     }
 

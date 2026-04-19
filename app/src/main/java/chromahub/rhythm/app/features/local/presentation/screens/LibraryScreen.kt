@@ -122,6 +122,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.SmallFloatingActionButton
 import chromahub.rhythm.app.ui.UiConstants
+import chromahub.rhythm.app.ui.theme.MusicDimensions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -653,6 +654,9 @@ fun LibraryScreen(
     val scanProgress by musicViewModel.scanProgress.collectAsState()
     val pullToRefreshState = rememberPullToRefreshState()
     var isRefreshing by remember { mutableStateOf(false) }
+    val isTabletLayout = LocalConfiguration.current.screenWidthDp >= 600
+    val libraryBottomOverlayPadding =
+        if (isTabletLayout) 0.dp else (MusicDimensions.bottomNavigationHeight + 16.dp)
     
     // Update refreshing state based on library refreshing
     LaunchedEffect(isLibraryRefreshing) {
@@ -1429,7 +1433,7 @@ fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = libraryBottomOverlayPadding),
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shadowElevation = 0.dp

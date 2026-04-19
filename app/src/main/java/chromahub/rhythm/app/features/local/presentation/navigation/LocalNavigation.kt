@@ -164,6 +164,8 @@ import androidx.compose.animation.core.EaseInBack
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -414,17 +416,12 @@ fun LocalNavigation(
     
     // Calculate content bottom padding based on visible UI elements
     // System insets are handled separately via windowInsetsPadding on the bottomBar
-    val miniPlayerPaddingValues = remember(showMiniPlayer, showBottomNav, isTablet) {
+    val miniPlayerPaddingValues = remember(showMiniPlayer, isTablet) {
         var totalPadding = 0.dp
         
         // Add MiniPlayer height if visible (only on phones, not tablets)
         if (showMiniPlayer && !isTablet) {
             totalPadding += UiConstants.MiniPlayerHeight + 16.dp // Card height + spacing
-        }
-        
-        // Add NavBar height if visible (only on phones, not tablets) - using base value for padding
-        if (showBottomNav && !isTablet) {
-            totalPadding += UiConstants.NavBarHeight + 16.dp // NavBar height + spacing
         }
         
         // Return padding values (system insets handled by bottomBar container)
@@ -750,7 +747,16 @@ private fun LocalNavigationContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars) // Handle system navigation bars once
-                    .padding(bottom = 4.dp) // Minimum bottom margin for gesture navigation safety
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.25f to MaterialTheme.colorScheme.surface.copy(alpha = 0.28f),
+                                0.62f to MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                                1f to MaterialTheme.colorScheme.surface.copy(alpha = 1f)
+                            )
+                        )
+                    )
             ) {
                 // Global MiniPlayer (hidden on full player screen) with bounce entrance animation
                 // Show at bottom on phones, or on right side if tablet miniplayer is enabled
@@ -828,31 +834,17 @@ private fun LocalNavigationContent(
                         )
                     )
                 ) {
-                    Column {
-                        // // Add subtle separator when mini player is visible for better visual separation
-                        // if (showMiniPlayer) {
-                        //     HorizontalDivider(
-                        //         thickness = 1.dp,
-                        //         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
-                        //         modifier = Modifier.padding(horizontal = 32.dp)
-                        //     )
-                        // }
-
-                        // New outer Box to layer navigation bar and search icon
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    top = if (showMiniPlayer) 2.dp else 8.dp,
-                                    bottom = 8.dp // Simple spacing - no system insets here
-                                )
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 8.dp)
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp) // Overall horizontal padding for the row
-                                .align(Alignment.CenterHorizontally), // Align the row to the center horizontally within the Column
-                            verticalAlignment = Alignment.Bottom // Align items to the bottom of the row
+                                .padding(horizontal = 16.dp)
+                                .align(Alignment.BottomCenter),
+                            verticalAlignment = Alignment.Bottom
                         ) {
                             // Expressive Navigation bar Surface with pill shape
                             Surface(

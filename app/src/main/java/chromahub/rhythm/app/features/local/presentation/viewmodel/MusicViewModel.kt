@@ -1442,15 +1442,28 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Extract embedded album art in background when ignoreMediaStoreCovers or losslessArtwork is enabled.
+        // Extract embedded album art in background when preferSongArtwork is enabled.
         // This runs after the UI is fully settled so it doesn't affect splash screen load time.
         viewModelScope.launch(Dispatchers.IO) {
-            delay(7000) // Wait until well after UI is loaded
             try {
-                val ignoreMediaStoreCovers = appSettings.ignoreMediaStoreCovers.value
+                val preferSongArtwork = appSettings.preferSongArtwork.value
                 val losslessArtwork = appSettings.losslessArtwork.value
-                if (ignoreMediaStoreCovers || losslessArtwork) {
-                    Log.d(TAG, "Starting background embedded album art extraction (ignoreMediaStoreCovers=$ignoreMediaStoreCovers, lossless=$losslessArtwork)")
+                if (preferSongArtwork) {
+                    val initialSongs = _songs.value
+                    val hasMissingArtwork = initialSongs.any { song ->
+                        val artworkUri = song.artworkUri
+                        when {
+                            artworkUri == null -> true
+                            artworkUri.scheme == "file" || artworkUri.scheme == null -> {
+                                artworkUri.path?.let { !File(it).exists() } != false
+                            }
+                            else -> false
+                        }
+                    }
+                    val extractionDelayMs = if (hasMissingArtwork) 1500L else 4500L
+                    delay(extractionDelayMs)
+
+                    Log.d(TAG, "Starting background embedded album art extraction (preferSongArtwork=$preferSongArtwork, lossless=$losslessArtwork)")
                     val currentSongs = _songs.value
                     if (currentSongs.isNotEmpty()) {
                         val updatedSongs = repository.extractEmbeddedArtworkForSongs(currentSongs, losslessArtwork)
@@ -1813,12 +1826,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Re-run embedded artwork extraction if ignoreMediaStoreCovers is enabled
+                // Re-run embedded artwork extraction if preferSongArtwork is enabled
                 launch {
                     try {
-                        val ignoreMediaStoreCovers = appSettings.ignoreMediaStoreCovers.value
+                        val preferSongArtwork = appSettings.preferSongArtwork.value
                         val losslessArtwork = appSettings.losslessArtwork.value
-                        if (ignoreMediaStoreCovers || losslessArtwork) {
+                        if (preferSongArtwork) {
                             delay(2000)
                             val currentSongs = _songs.value
                             if (currentSongs.isNotEmpty()) {

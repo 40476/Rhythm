@@ -63,7 +63,7 @@
     <string name="settings_custom_notifications_desc">Use app\'s custom notification style instead of system media notification</string>
     <string name="settings_notifications_updates_group">App Updates</string>
     <string name="settings_notifications_rhythm_guard_group">Rhythm Guard</string>
-    <string name="settings_notifications_rhythm_pulse_group">Rhythm Pulse</string>
+    <string name="settings_notifications_rhythm_pulse_group">Rhythm Tips</string>
     <string name="settings_update_notifications_merged_desc">Get alerts for new versions and background update check results</string>
     <string name="settings_update_status_notifications">Update Status Notifications</string>
     <string name="settings_update_status_notifications_desc">Get background check results such as up-to-date and check errors</string>
@@ -71,10 +71,10 @@
     <string name="settings_rhythm_guard_alert_notifications_desc">Show a notification when Rhythm Guard detects risky volume or exposure</string>
     <string name="settings_rhythm_guard_timer_notifications">Break Timer Notifications</string>
     <string name="settings_rhythm_guard_timer_notifications_desc">Show notifications for scheduled breaks and active timeout countdowns</string>
-    <string name="settings_rhythm_pulse_notifications">Rhythm Pulse Notifications</string>
+    <string name="settings_rhythm_pulse_notifications">Rhythm Tips Notifications</string>
     <string name="settings_rhythm_pulse_notifications_desc">Receive friendly reminders and listening tips.</string>
-    <string name="settings_rhythm_pulse_interval">Pulse Interval</string>
-    <string name="settings_rhythm_pulse_interval_dialog_title">Rhythm Pulse Interval</string>
+    <string name="settings_rhythm_pulse_interval">Tips Interval</string>
+    <string name="settings_rhythm_pulse_interval_dialog_title">Rhythm Tips Interval</string>
     
     <!-- Settings - Queue & Playback -->
     <string name="settings_queue_playback">Queue and Playback</string>
@@ -258,7 +258,7 @@
     <string name="settings_root">Root</string>
     <string name="settings_scan_behavior">Scan Behavior</string>
     <string name="settings_include_hidden_whitelisted_media">Include Hidden &amp; .nomedia Files</string>
-    <string name="settings_include_hidden_whitelisted_media_desc">When whitelist mode is active, also scan hidden and .nomedia paths inside whitelisted folders.</string>
+    <string name="settings_include_hidden_whitelisted_media_desc">Enable scanning hidden and .nomedia audio paths during full media scans (strongest effect in whitelist folders).</string>
     
     <!-- Settings - Spotify -->
     <string name="settings_spotify_api_config">Spotify API Configuration</string>
@@ -1656,7 +1656,7 @@
     <!-- Service Notifications -->
     <string name="service_app_updates">Rhythm Updater</string>
     <string name="service_update_status">Rhythm Updater Status</string>
-    <string name="service_rhythm_pulse">Rhythm Pulse</string>
+    <string name="service_rhythm_pulse">Rhythm Tips</string>
     <string name="service_rhythm_guard_alerts">Rhythm Guard Alerts</string>
     <string name="service_rhythm_guard_timers">Rhythm Guard Timers</string>
     <string name="service_rhythm_music">Rhythm Music</string>
@@ -1705,10 +1705,19 @@
     <string name="settings_album_bottom_sheet_gradient_blur_desc">Control gradient and blur behind album sheets</string>
     <string name="settings_gestures">Gestures</string>
     <string name="settings_gestures_desc">Swipe to skip</string>
-    <string name="settings_ignore_mediastore_covers">Ignore MediaStore Covers</string>
-    <string name="settings_ignore_mediastore_covers_desc">Prefer embedded artwork from your audio files</string>
+    <string name="settings_ignore_mediastore_covers">Show Song Art Instead of Album Art</string>
+    <string name="settings_ignore_mediastore_covers_desc">Prefer embedded artwork from each audio file (formerly Ignore MediaStore Covers)</string>
     <string name="settings_lossless_artwork">Lossless Artwork</string>
-    <string name="settings_lossless_artwork_desc">Show full-resolution artwork without compression</string>
+    <string name="settings_lossless_artwork_desc">Show full-resolution embedded song artwork without compression</string>
+    <string name="settings_song_artwork_restart_required">Artwork mode changed. Restart the app to clear caches and run a full media rescan with updated artwork sources.</string>
+    <string name="settings_artwork_cache_size">Artwork Cache Size</string>
+    <string name="settings_artwork_cache_size_loading">Calculating embedded artwork cache usage...</string>
+    <string name="settings_artwork_cache_size_desc">Embedded artwork cache currently uses %1$s across %2$d files</string>
+    <string name="settings_artwork_cache_trim_now">Trim Artwork Cache Now</string>
+    <string name="settings_artwork_cache_trim_now_desc">Prune old artwork entries using cache limits</string>
+    <string name="settings_artwork_cache_trim_in_progress">Trimming artwork cache...</string>
+    <string name="settings_artwork_cache_trim_success">Artwork cache trimmed. Current usage: %1$s</string>
+    <string name="settings_artwork_cache_trim_failed">Failed to trim artwork cache</string>
     <string name="settings_artist_parsing">Artists</string>
     <string name="settings_artist_parsing_desc">Separators, display</string>
     <string name="settings_rhythm_stats">Rhythm Stats</string>
@@ -2572,7 +2581,7 @@
     <string name="settings_all_cache_cleared">All cache cleared</string>
     <string name="settings_cache_clear_failed">Failed to clear cache</string>
     <string name="settings_clear_all_cache">Clear All Cache</string>
-    <string name="settings_clear_all_cache_desc">Remove all cached data</string>
+    <string name="settings_clear_all_cache_desc">Remove all cached data, including embedded artwork cache entries</string>
     <string name="settings_cache_info_1">Cache includes album art, temporary files, and app data</string>
     <string name="settings_cache_info_2">Clearing cache may temporarily slow down the app</string>
     <string name="settings_cache_info_3">Cached data will rebuild automatically as needed</string>
@@ -2910,8 +2919,8 @@
     <string name="settings_exp_festive_theme_desc">Festive decorations</string>
     <string name="settings_exp_auto_detect_holidays">Auto-Detect Holidays</string>
     <string name="settings_exp_auto_detect_holidays_desc">Auto-show holiday themes</string>
-    <string name="settings_exp_ignore_mediastore">Ignore MediaStore Covers</string>
-    <string name="settings_exp_ignore_mediastore_desc">Direct art extraction</string>
+    <string name="settings_exp_ignore_mediastore">Show Song Art Instead of Album Art</string>
+    <string name="settings_exp_ignore_mediastore_desc">Prefer embedded artwork from each song</string>
     <string name="settings_exp_codec_monitoring">Codec Monitoring</string>
     <string name="settings_exp_codec_monitoring_desc">Log audio info</string>
     <string name="settings_exp_audio_device_logging">Audio Device Logging</string>
@@ -2954,10 +2963,10 @@
     <string name="settings_notifications_rhythm_guard_alerts_desc">Notify when listening risk warnings are triggered</string>
     <string name="settings_notifications_rhythm_guard_timers">Rhythm Guard Break Timers</string>
     <string name="settings_notifications_rhythm_guard_timers_desc">Notify for scheduled breaks and timeout countdowns</string>
-    <string name="settings_notifications_rhythm_pulse">Rhythm Pulse</string>
+    <string name="settings_notifications_rhythm_pulse">Rhythm Tips</string>
     <string name="settings_notifications_rhythm_pulse_desc">Friendly reminders and listening tips.</string>
-    <string name="settings_notifications_rhythm_pulse_interval">Rhythm Pulse Interval</string>
-    <string name="settings_notifications_rhythm_pulse_interval_desc">How often pulse notifications are delivered</string>
+    <string name="settings_notifications_rhythm_pulse_interval">Rhythm Tips Interval</string>
+    <string name="settings_notifications_rhythm_pulse_interval_desc">How often tips notifications are delivered</string>
 
     <!-- Expressive Shapes Search Strings -->
     <string name="settings_expressive_shapes_enabled">Expressive Shapes</string>

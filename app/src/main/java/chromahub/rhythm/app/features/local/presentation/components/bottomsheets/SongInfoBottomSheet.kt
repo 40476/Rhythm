@@ -120,6 +120,59 @@ data class ExtendedSongInfo(
     val qualityCategory: String = "Unknown"     // "Lossless", "Lossy", "Surround"
 )
 
+private fun resolveSongInfoArtworkUri(context: android.content.Context, song: Song): Uri? {
+    val currentArtworkUri = song.artworkUri
+
+    if (currentArtworkUri != null &&
+        !isMediaStoreAlbumArtworkUri(currentArtworkUri) &&
+        isUsableArtworkUri(currentArtworkUri)
+    ) {
+        return currentArtworkUri
+    }
+
+    val cachedLossless = MediaUtils.getCachedEmbeddedAlbumArtUri(
+        cacheDir = context.cacheDir,
+        songUri = song.uri,
+        lossless = true
+    )
+    if (cachedLossless != null) {
+        return cachedLossless
+    }
+
+    val cachedLossy = MediaUtils.getCachedEmbeddedAlbumArtUri(
+        cacheDir = context.cacheDir,
+        songUri = song.uri,
+        lossless = false
+    )
+    if (cachedLossy != null) {
+        return cachedLossy
+    }
+
+    val extractedEmbedded = MediaUtils.extractEmbeddedAlbumArt(
+        context = context,
+        songUri = song.uri,
+        cacheDir = context.cacheDir,
+        lossless = false
+    )
+    if (extractedEmbedded != null) {
+        return extractedEmbedded
+    }
+
+    return currentArtworkUri
+}
+
+private fun isMediaStoreAlbumArtworkUri(uri: Uri): Boolean {
+    val value = uri.toString().lowercase()
+    return value.startsWith("content://media/") && value.contains("/audio/albumart")
+}
+
+private fun isUsableArtworkUri(uri: Uri): Boolean {
+    return when (uri.scheme) {
+        "file", null -> uri.path?.let { File(it).exists() } == true
+        else -> true
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SongInfoBottomSheet(
@@ -221,6 +274,15 @@ fun SongInfoBottomSheet(
     }
 
     val displaySong = currentSong ?: song
+    var displayArtworkUri by remember(displaySong.id, displaySong.artworkUri) {
+        mutableStateOf(displaySong.artworkUri)
+    }
+
+    LaunchedEffect(displaySong.id, displaySong.uri, displaySong.artworkUri) {
+        displayArtworkUri = withContext(Dispatchers.IO) {
+            resolveSongInfoArtworkUri(context, displaySong)
+        }
+    }
 
     // Load extended metadata
     LaunchedEffect(song.id) {
@@ -468,8 +530,8 @@ fun SongInfoBottomSheet(
                                             model = ImageRequest.Builder(context)
                                                 .apply(
                                                     ImageUtils.buildImageRequest(
-                                                        song.artworkUri,
-                                                        song.title,
+                                                        displayArtworkUri,
+                                                        displaySong.title,
                                                         context.cacheDir,
                                                         M3PlaceholderType.TRACK
                                                     )
@@ -490,7 +552,7 @@ fun SongInfoBottomSheet(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = song.title,
+                                        text = displaySong.title,
                                         style = MaterialTheme.typography.headlineMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
@@ -501,7 +563,7 @@ fun SongInfoBottomSheet(
                                     )
 
                                     Text(
-                                        text = song.artist,
+                                        text = displaySong.artist,
                                         style = MaterialTheme.typography.titleLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Medium,
@@ -512,10 +574,10 @@ fun SongInfoBottomSheet(
 
                                     val tabletDiscNumber = (extendedInfo?.discNumber ?: 0)
                                         .takeIf { it > 0 }
-                                        ?: song.discNumber.takeIf { it > 0 }
+                                        ?: displaySong.discNumber.takeIf { it > 0 }
                                     val tabletSongDescriptor = buildList {
                                         tabletDiscNumber?.let { add("Disc $it") }
-                                        if (song.trackNumber > 0) add("Track ${song.trackNumber}")
+                                        if (displaySong.trackNumber > 0) add("Track ${displaySong.trackNumber}")
                                     }.joinToString(" • ")
 
                                     if (tabletSongDescriptor.isNotEmpty()) {
@@ -738,14 +800,14 @@ fun SongInfoBottomSheet(
                                 model = ImageRequest.Builder(context)
                                     .apply(
                                         ImageUtils.buildImageRequest(
-                                            displaySong.artworkUri,
+                                            displayArtworkUri,
                                             displaySong.title,
                                             context.cacheDir,
                                             M3PlaceholderType.TRACK
                                         )
                                     )
                                     .build(),
-                                contentDescription = "Album artwork",
+                                contentDescription = "Song artwork",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -1790,11 +1852,20 @@ private fun EditSongSheet(
     var showWarningDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var showContent by remember { mutableStateOf(false) }
+    var resolvedSongArtworkUri by remember(song.id, song.artworkUri, song.uri) {
+        mutableStateOf(song.artworkUri)
+    }
     
     // Animation effect
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(50)
         showContent = true
+    }
+
+    LaunchedEffect(song.id, song.artworkUri, song.uri) {
+        resolvedSongArtworkUri = withContext(Dispatchers.IO) {
+            resolveSongInfoArtworkUri(context, song)
+        }
     }
     
     // Function to reset all fields to original values
@@ -1877,7 +1948,7 @@ private fun EditSongSheet(
     val artworkPreviewUri = when {
         removeArtwork -> null
         selectedImageUri != null -> selectedImageUri
-        else -> song.artworkUri
+        else -> resolvedSongArtworkUri
     }
     var hasArtworkPreview by remember(artworkPreviewUri, removeArtwork, selectedImageUri) {
         mutableStateOf(selectedImageUri != null)

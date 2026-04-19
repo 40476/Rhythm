@@ -528,6 +528,76 @@ private fun toMaterial3SettingsItem(
     )
 }
 
+private data class ArtworkCacheStats(
+    val sizeBytes: Long,
+    val fileCount: Int
+)
+
+private const val ARTWORK_CACHE_TRIM_MAX_BYTES = 256L * 1024 * 1024
+private const val ARTWORK_CACHE_TRIM_MAX_FILES = 1200
+
+private fun collectArtworkCacheFiles(cacheDir: File): MutableList<File> {
+    val artworkCacheDir = File(cacheDir, "embedded_artwork")
+    val currentArtworkFiles = artworkCacheDir
+        .listFiles { file -> file.isFile }
+        ?.toMutableList()
+        ?: mutableListOf()
+
+    val legacyArtworkFiles = cacheDir
+        .listFiles { file ->
+            file.isFile &&
+                (file.name.startsWith("embedded_art_") || file.name.startsWith("embedded_art_lossless_"))
+        }
+        ?.toList()
+        .orEmpty()
+
+    return mutableListOf<File>().apply {
+        addAll(currentArtworkFiles)
+        addAll(legacyArtworkFiles)
+    }
+}
+
+private fun readArtworkCacheStats(cacheDir: File): ArtworkCacheStats {
+    val files = collectArtworkCacheFiles(cacheDir)
+    return ArtworkCacheStats(
+        sizeBytes = files.sumOf { it.length() },
+        fileCount = files.size
+    )
+}
+
+private fun trimArtworkCacheNow(cacheDir: File): ArtworkCacheStats {
+    val files = collectArtworkCacheFiles(cacheDir)
+    if (files.isEmpty()) {
+        return ArtworkCacheStats(sizeBytes = 0L, fileCount = 0)
+    }
+
+    var totalSize = files.sumOf { it.length() }
+    var fileCount = files.size
+
+    if (totalSize <= ARTWORK_CACHE_TRIM_MAX_BYTES && fileCount <= ARTWORK_CACHE_TRIM_MAX_FILES) {
+        return ArtworkCacheStats(sizeBytes = totalSize, fileCount = fileCount)
+    }
+
+    files.sortBy { it.lastModified() }
+
+    for (file in files) {
+        if (totalSize <= ARTWORK_CACHE_TRIM_MAX_BYTES && fileCount <= ARTWORK_CACHE_TRIM_MAX_FILES) {
+            break
+        }
+
+        val fileSize = file.length()
+        if (file.delete()) {
+            totalSize -= fileSize
+            fileCount--
+        }
+    }
+
+    return ArtworkCacheStats(
+        sizeBytes = totalSize.coerceAtLeast(0L),
+        fileCount = fileCount.coerceAtLeast(0)
+    )
+}
+
 // Individual screens with actual settings
 @Composable
 fun NotificationsSettingsScreen(onBackClick: () -> Unit) {
@@ -2592,28 +2662,26 @@ fun MediaScanSettingsScreen(onBackClick: () -> Unit) {
                 }
             }
 
-            if (currentMode == chromahub.rhythm.app.shared.presentation.components.MediaScanMode.WHITELIST) {
-                item {
-                    val scanBehaviorItems = listOf(
-                        toMaterial3SettingsItem(
-                            context = context,
-                            hapticFeedback = haptic,
-                            item = SettingItem(
-                                icon = Icons.Default.Visibility,
-                                title = context.getString(R.string.settings_include_hidden_whitelisted_media),
-                                description = context.getString(R.string.settings_include_hidden_whitelisted_media_desc),
-                                toggleState = includeHiddenWhitelistedMedia,
-                                onToggleChange = { appSettings.setIncludeHiddenWhitelistedMedia(it) }
-                            )
+            item {
+                val scanBehaviorItems = listOf(
+                    toMaterial3SettingsItem(
+                        context = context,
+                        hapticFeedback = haptic,
+                        item = SettingItem(
+                            icon = Icons.Default.Visibility,
+                            title = context.getString(R.string.settings_include_hidden_whitelisted_media),
+                            description = context.getString(R.string.settings_include_hidden_whitelisted_media_desc),
+                            toggleState = includeHiddenWhitelistedMedia,
+                            onToggleChange = { appSettings.setIncludeHiddenWhitelistedMedia(it) }
                         )
                     )
+                )
 
-                    Material3SettingsGroup(
-                        title = context.getString(R.string.settings_scan_behavior),
-                        items = scanBehaviorItems,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                }
+                Material3SettingsGroup(
+                    title = context.getString(R.string.settings_scan_behavior),
+                    items = scanBehaviorItems,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             }
 
             settingGroups.drop(1).forEach { group ->
@@ -5490,8 +5558,6 @@ fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
     val showLyrics by appSettings.showLyrics.collectAsState()
     val showLyricsTranslation by appSettings.showLyricsTranslation.collectAsState()
     val showLyricsRomanization by appSettings.showLyricsRomanization.collectAsState()
-    val ignoreMediaStoreCovers by appSettings.ignoreMediaStoreCovers.collectAsState()
-    val losslessArtwork by appSettings.losslessArtwork.collectAsState()
     val bitPerfectMode by appSettings.bitPerfectMode.collectAsState()
     val audioRoutingMode by appSettings.audioRoutingMode.collectAsState()
     val haptic = LocalHapticFeedback.current
@@ -6294,11 +6360,16 @@ fun LibrarySettingsScreen(onBackClick: () -> Unit) {
 
     val enableRatingSystem by appSettings.enableRatingSystem.collectAsState()
     val libraryCombineDiscs by appSettings.libraryCombineDiscs.collectAsState()
-    val ignoreMediaStoreCovers by appSettings.ignoreMediaStoreCovers.collectAsState()
+    val preferSongArtwork by appSettings.preferSongArtwork.collectAsState()
     val losslessArtwork by appSettings.losslessArtwork.collectAsState()
     val albumBottomSheetGradientBlur by appSettings.albumBottomSheetGradientBlur.collectAsState()
 
     var showLibraryTabOrderBottomSheet by remember { mutableStateOf(false) }
+    var showRestartDialog by remember { mutableStateOf(false) }
+    var restartRequiresArtworkRescan by remember { mutableStateOf(false) }
+    var restartDialogMessage by remember {
+        mutableStateOf(context.getString(R.string.settings_song_artwork_restart_required))
+    }
 
     CollapsibleHeaderScreen(
         title = context.getString(R.string.settings_library_settings),
@@ -6338,15 +6409,29 @@ fun LibrarySettingsScreen(onBackClick: () -> Unit) {
                         RhythmIcons.Album,
                         context.getString(R.string.settings_ignore_mediastore_covers),
                         context.getString(R.string.settings_ignore_mediastore_covers_desc),
-                        toggleState = ignoreMediaStoreCovers,
-                        onToggleChange = { appSettings.setIgnoreMediaStoreCovers(it) }
+                        toggleState = preferSongArtwork,
+                        onToggleChange = {
+                            if (it != preferSongArtwork) {
+                                appSettings.setPreferSongArtwork(it)
+                                restartRequiresArtworkRescan = true
+                                restartDialogMessage = context.getString(R.string.settings_song_artwork_restart_required)
+                                showRestartDialog = true
+                            }
+                        }
                     ),
                     SettingItem(
                         Icons.Default.MusicNote,
                         context.getString(R.string.settings_lossless_artwork),
                         context.getString(R.string.settings_lossless_artwork_desc),
                         toggleState = losslessArtwork,
-                        onToggleChange = { appSettings.setLosslessArtwork(it) }
+                        onToggleChange = {
+                            if (it != losslessArtwork) {
+                                appSettings.setLosslessArtwork(it)
+                                restartRequiresArtworkRescan = true
+                                restartDialogMessage = context.getString(R.string.settings_song_artwork_restart_required)
+                                showRestartDialog = true
+                            }
+                        }
                     ),
                     SettingItem(
                         Icons.Default.LensBlur,
@@ -6387,6 +6472,28 @@ fun LibrarySettingsScreen(onBackClick: () -> Unit) {
             onDismiss = { showLibraryTabOrderBottomSheet = false },
             appSettings = appSettings,
             haptics = haptics
+        )
+    }
+
+    if (showRestartDialog) {
+        AppRestartDialog(
+            onDismiss = {
+                showRestartDialog = false
+                restartRequiresArtworkRescan = false
+            },
+            onRestart = {
+                if (restartRequiresArtworkRescan) {
+                    appSettings.requestFullMediaRescanOnNextLaunch(reason = "library_artwork_settings_restart")
+                }
+                showRestartDialog = false
+                restartRequiresArtworkRescan = false
+                chromahub.rhythm.app.util.AppRestarter.restartApp(context)
+            },
+            onContinue = {
+                showRestartDialog = false
+                restartRequiresArtworkRescan = false
+            },
+            message = restartDialogMessage
         )
     }
 }
@@ -7888,17 +7995,29 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
     var isRebuildingRoom by remember { mutableStateOf(false) }
     var roomSongCount by remember { mutableStateOf(-1) }
 
-    // Calculate cache size when the screen opens
-    LaunchedEffect(Unit) {
+    val refreshCacheStats: suspend () -> Unit = {
         isCalculatingSize = true
         try {
-            currentCacheSize = chromahub.rhythm.app.util.CacheManager.getCacheSize(context)
-            cacheDetails = chromahub.rhythm.app.util.CacheManager.getDetailedCacheSize(context)
+            val (totalCacheSize, detailedCacheStats) = kotlinx.coroutines.withContext(
+                kotlinx.coroutines.Dispatchers.IO
+            ) {
+                Pair(
+                    chromahub.rhythm.app.util.CacheManager.getCacheSize(context),
+                    chromahub.rhythm.app.util.CacheManager.getDetailedCacheSize(context)
+                )
+            }
+            currentCacheSize = totalCacheSize
+            cacheDetails = detailedCacheStats
         } catch (e: Exception) {
             Log.e("CacheManagement", "Error calculating cache size", e)
         } finally {
             isCalculatingSize = false
         }
+    }
+
+    // Calculate cache size when the screen opens
+    LaunchedEffect(Unit) {
+        refreshCacheStats()
     }
 
     // Calculate storage backend stats
@@ -8004,24 +8123,22 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
 
                             // Cache breakdown
                             cacheDetails.forEach { (label, size) ->
-                                if (size > 0) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "  • $label:",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = chromahub.rhythm.app.util.CacheManager.formatBytes(size),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "  • $label:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = chromahub.rhythm.app.util.CacheManager.formatBytes(size),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -8107,8 +8224,7 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
                                         try {
                                             isClearingCache = true
                                             musicViewModel.clearLyricsCacheAndRefetch()
-                                            currentCacheSize = chromahub.rhythm.app.util.CacheManager.getCacheSize(context)
-                                            cacheDetails = chromahub.rhythm.app.util.CacheManager.getDetailedCacheSize(context)
+                                            refreshCacheStats()
                                             Toast.makeText(context, context.getString(R.string.settings_lyrics_cache_cleared), Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
                                             Log.e("CacheManagement", "Error clearing lyrics cache", e)
@@ -8144,11 +8260,13 @@ fun CacheManagementSettingsScreen(onBackClick: () -> Unit) {
                                 scope.launch {
                                     try {
                                         isClearingCache = true
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            trimArtworkCacheNow(context.cacheDir)
+                                        }
                                         chromahub.rhythm.app.util.CacheManager.clearAllCache(context, null)
                                         musicViewModel.getMusicRepository().clearInMemoryCaches()
                                         musicViewModel.getMusicRepository().clearSongCacheData()
-                                        currentCacheSize = chromahub.rhythm.app.util.CacheManager.getCacheSize(context)
-                                        cacheDetails = chromahub.rhythm.app.util.CacheManager.getDetailedCacheSize(context)
+                                        refreshCacheStats()
                                         showClearCacheSuccess = true
                                         Toast.makeText(context, context.getString(R.string.settings_all_cache_cleared), Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {

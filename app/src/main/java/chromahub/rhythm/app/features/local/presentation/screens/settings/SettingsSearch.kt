@@ -452,6 +452,15 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             parentScreen = context.getString(R.string.settings_section_storage_data)
         ))
         add(SearchableSettingItem(
+            id = "artwork_cache_size",
+            title = context.getString(R.string.settings_artwork_cache_size),
+            description = context.getString(R.string.cache_current_status),
+            keywords = listOf("artwork cache", "embedded art", "song art cache", "cache size", "album art files", "image cache", "trim artwork cache", "clear all cache"),
+            icon = Icons.Default.Storage,
+            route = SettingsRoutes.CACHE_MANAGEMENT,
+            parentScreen = context.getString(R.string.settings_cache_management_title)
+        ))
+        add(SearchableSettingItem(
             id = "backup_restore",
             title = context.getString(R.string.settings_backup_restore_title),
             description = context.getString(R.string.settings_backup_restore_desc),
@@ -1257,11 +1266,11 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             id = "exp_ignore_mediastore",
             title = context.getString(R.string.settings_exp_ignore_mediastore),
             description = context.getString(R.string.settings_exp_ignore_mediastore_desc),
-            keywords = listOf("mediastore", "album art", "cover", "extract", "embedded"),
+            keywords = listOf("song art", "song artwork", "mediastore", "album art", "cover", "extract", "embedded"),
             icon = RhythmIcons.Album,
             route = SettingsRoutes.LIBRARY_SETTINGS,
             parentScreen = context.getString(R.string.settings_library_settings),
-            settingKey = "ignoreMediaStoreCovers"
+            settingKey = "preferSongArtwork"
         ))
         add(SearchableSettingItem(
             id = "exp_codec_monitoring",
@@ -1420,7 +1429,7 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             id = "notifications_rhythm_pulse",
             title = context.getString(R.string.settings_notifications_rhythm_pulse),
             description = context.getString(R.string.settings_notifications_rhythm_pulse_desc),
-            keywords = listOf("rhythm pulse", "greetings", "comic tips", "music tips", "motivational notifications"),
+            keywords = listOf("rhythm tips", "greetings", "comic tips", "music tips", "motivational notifications"),
             icon = Icons.Default.Celebration,
             route = SettingsRoutes.NOTIFICATIONS,
             parentScreen = "Notifications",
@@ -1430,7 +1439,7 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             id = "notifications_rhythm_pulse_interval",
             title = context.getString(R.string.settings_notifications_rhythm_pulse_interval),
             description = context.getString(R.string.settings_notifications_rhythm_pulse_interval_desc),
-            keywords = listOf("pulse interval", "rhythm pulse frequency", "hours", "6 hours", "24 hours", "72 hours"),
+            keywords = listOf("tips interval", "rhythm tips frequency", "hours", "6 hours", "24 hours", "72 hours"),
             icon = Icons.Default.Schedule,
             route = SettingsRoutes.NOTIFICATIONS,
             parentScreen = "Notifications",

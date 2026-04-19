@@ -39,6 +39,9 @@ interface SongArtistDao {
     @Query("DELETE FROM song_artists WHERE groupByAlbumArtist = :groupByAlbumArtist")
     suspend fun deleteByGroupType(groupByAlbumArtist: Boolean)
 
+    @Query("DELETE FROM song_artists")
+    suspend fun deleteAll()
+
     @Query("DELETE FROM song_artists WHERE songId = :songId")
     suspend fun deleteBySongId(songId: String)
 

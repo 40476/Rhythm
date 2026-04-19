@@ -290,8 +290,44 @@ class MusicRepository(context: Context) {
         return try {
             val entities = songDao.getAllSongs()
             if (entities.isEmpty()) return null
+            val appSettings = AppSettings.getInstance(context)
+            val useEmbeddedArt = appSettings.preferSongArtwork.value
+            val losslessArtwork = appSettings.losslessArtwork.value
             val songs = entities.mapNotNull { entity ->
                 try {
+                    val songUri = Uri.parse(entity.uri)
+                    val savedArtworkUri = entity.artworkUri?.let { Uri.parse(it) }
+                    val savedArtworkUsable = when (savedArtworkUri?.scheme) {
+                        "file", null -> savedArtworkUri?.path?.let { File(it).exists() } == true
+                        else -> true
+                    }
+                    val savedArtworkIsEmbeddedCache = isEmbeddedArtworkCacheUri(savedArtworkUri)
+                    val shouldUseSavedArtwork = savedArtworkUsable && (useEmbeddedArt || !savedArtworkIsEmbeddedCache)
+
+                    val embeddedCachedArtwork = if (useEmbeddedArt) {
+                        chromahub.rhythm.app.util.MediaUtils.getCachedEmbeddedAlbumArtUri(
+                            cacheDir = context.cacheDir,
+                            songUri = songUri,
+                            lossless = losslessArtwork
+                        )
+                    } else {
+                        null
+                    }
+
+                    val fallbackAlbumArt = entity.albumId.toLongOrNull()?.let { albumId ->
+                        ContentUris.withAppendedId(
+                            Uri.parse("content://media/external/audio/albumart"),
+                            albumId
+                        )
+                    }
+
+                    val resolvedArtworkUri = when {
+                        embeddedCachedArtwork != null -> embeddedCachedArtwork
+                        shouldUseSavedArtwork -> savedArtworkUri
+                        fallbackAlbumArt != null -> fallbackAlbumArt
+                        else -> null
+                    }
+
                     Song(
                         id = entity.id,
                         title = entity.title,
@@ -299,8 +335,8 @@ class MusicRepository(context: Context) {
                         album = entity.album,
                         albumId = entity.albumId,
                         duration = entity.duration,
-                        uri = Uri.parse(entity.uri),
-                        artworkUri = entity.artworkUri?.let { Uri.parse(it) },
+                        uri = songUri,
+                        artworkUri = resolvedArtworkUri,
                         trackNumber = entity.trackNumber,
                         year = entity.year,
                         genre = entity.genre,
@@ -324,6 +360,28 @@ class MusicRepository(context: Context) {
             Log.e(TAG, "Failed to load songs from Room database", e)
             null
         }
+    }
+
+    private fun isEmbeddedArtworkCacheUri(uri: Uri?): Boolean {
+        if (uri == null) return false
+
+        if (uri.scheme != "file" && uri.scheme != null) {
+            return false
+        }
+
+        val path = uri.path ?: return false
+        val file = File(path)
+        val embeddedArtworkDir = File(context.cacheDir, "embedded_artwork")
+
+        if (file.parentFile?.absolutePath == embeddedArtworkDir.absolutePath) {
+            return file.name.startsWith("embedded_art_") || file.name.startsWith("embedded_art_lossless_")
+        }
+
+        if (file.parentFile?.absolutePath == context.cacheDir.absolutePath) {
+            return file.name.startsWith("embedded_art_") || file.name.startsWith("embedded_art_lossless_")
+        }
+
+        return false
     }
     
     // ContentObserver for automatic updates
@@ -477,8 +535,17 @@ class MusicRepository(context: Context) {
         minimumBitrate: Int = 0,
         minimumDuration: Long = 0L
     ): List<Song> = withContext(Dispatchers.IO) {
+        val appSettings = AppSettings.getInstance(context)
+        var shouldForceRefresh = forceRefresh
+
+        if (appSettings.consumePendingFullMediaRescanRequest()) {
+            Log.i(TAG, "Pending full media rescan detected, invalidating persistent library caches")
+            invalidatePersistentLibraryCachesForForcedRescan()
+            shouldForceRefresh = true
+        }
+
         // Check in-memory cache first
-        if (!forceRefresh && 
+        if (!shouldForceRefresh && 
             cachedSongs != null && 
             System.currentTimeMillis() - cacheTimestamp < CACHE_VALIDITY_MS) {
             Log.d(TAG, "Returning cached songs (${cachedSongs!!.size})")
@@ -486,7 +553,7 @@ class MusicRepository(context: Context) {
         }
         
         // On cold start (no in-memory cache), try loading from Room cache
-        if (!forceRefresh && cachedSongs == null) {
+        if (!shouldForceRefresh && cachedSongs == null) {
             val diskCached = loadSongsFromRoom()
             if (diskCached != null && diskCached.isNotEmpty()) {
                 cachedSongs = diskCached
@@ -505,7 +572,6 @@ class MusicRepository(context: Context) {
         var filteredByFormat = 0
         var filteredByQuality = 0
 
-        val appSettings = AppSettings.getInstance(context)
         val mediaScanMode = appSettings.mediaScanMode.value
         val whitelistedFolders = appSettings.whitelistedFolders.value
         val includeHiddenWhitelistedMedia = appSettings.includeHiddenWhitelistedMedia.value
@@ -1101,8 +1167,8 @@ class MusicRepository(context: Context) {
             )
 
             // Use MediaStore album art URI by default.
-            // When ignoreMediaStoreCovers is enabled, prefer previously cached embedded art
-            // so songs show unique per-track artwork instead of shared album art.
+            // When preferSongArtwork is enabled, use previously cached embedded art so
+            // songs can show unique per-track artwork instead of shared album art.
             val albumArtUri = ContentUris.withAppendedId(
                 Uri.parse("content://media/external/audio/albumart"),
                 albumId
@@ -1111,7 +1177,7 @@ class MusicRepository(context: Context) {
             val artworkUriOverride = artworkPrefs.getString("uri_${id}", null)
                 ?.let { runCatching { Uri.parse(it) }.getOrNull() }
 
-            val useEmbeddedArt = appSettings.ignoreMediaStoreCovers.value || appSettings.losslessArtwork.value
+            val useEmbeddedArt = appSettings.preferSongArtwork.value
             val effectiveArtUri = if (useEmbeddedArt) {
                 val lossless = appSettings.losslessArtwork.value
                 chromahub.rhythm.app.util.MediaUtils.getCachedEmbeddedAlbumArtUri(
@@ -4220,7 +4286,7 @@ class MusicRepository(context: Context) {
 
     /**
      * Extracts embedded album art from audio files in a background pass.
-     * Called post-scan when ignoreMediaStoreCovers or losslessArtwork is enabled.
+      * Called post-scan when preferSongArtwork or losslessArtwork is enabled.
      * Updates [cachedSongs] with embedded art URIs and returns songs that were updated.
      */
     suspend fun extractEmbeddedArtworkForSongs(
@@ -4595,6 +4661,44 @@ class MusicRepository(context: Context) {
             Log.e(TAG, "Error clearing in-memory caches", e)
         }
     }
+
+    private suspend fun invalidatePersistentLibraryCachesForForcedRescan() {
+        try {
+            roomDb.withTransaction {
+                songDao.deleteAll()
+                roomDb.songArtistDao().deleteAll()
+                roomDb.artistDao().deleteAll()
+            }
+            genrePrefs.edit().clear().apply()
+            artworkPrefs.edit().clear().apply()
+            clearEmbeddedArtworkFileCaches()
+            clearInMemoryCaches()
+            Log.i(TAG, "Invalidated Room + metadata caches for forced full media rescan")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to invalidate persistent caches for forced media rescan", e)
+        }
+    }
+
+    private fun clearEmbeddedArtworkFileCaches() {
+        try {
+            val artworkCacheDir = File(context.cacheDir, "embedded_artwork")
+            if (artworkCacheDir.exists()) {
+                artworkCacheDir.deleteRecursively()
+            }
+
+            // Remove legacy cache files used by older versions.
+            context.cacheDir.listFiles()?.forEach { file ->
+                if (
+                    file.isFile &&
+                    (file.name.startsWith("embedded_art_") || file.name.startsWith("embedded_art_lossless_"))
+                ) {
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear embedded artwork file caches", e)
+        }
+    }
     
     /**
      * Clears all song cache data from Room database.
@@ -4602,19 +4706,23 @@ class MusicRepository(context: Context) {
      */
     fun clearSongCacheData() {
         try {
-            // Clear Room DB
             repositoryScope.launch {
                 try {
-                    songDao.deleteAll()
-                    Log.d(TAG, "Cleared Room song database")
+                    roomDb.withTransaction {
+                        songDao.deleteAll()
+                        roomDb.songArtistDao().deleteAll()
+                        roomDb.artistDao().deleteAll()
+                    }
+                    genrePrefs.edit().clear().apply()
+                    artworkPrefs.edit().clear().apply()
+                    clearEmbeddedArtworkFileCaches()
+                    clearInMemoryCaches()
+                    Log.d(TAG, "Cleared Room song/artist/link tables and metadata caches")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error clearing Room database", e)
                 }
             }
-            // Clear in-memory song cache
-            cachedSongs = null
-            cacheTimestamp = 0L
-            Log.d(TAG, "Cleared all song cache data (Room, in-memory)")
+            Log.d(TAG, "Scheduled full song cache clear (Room, metadata, in-memory)")
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing song cache data", e)
         }

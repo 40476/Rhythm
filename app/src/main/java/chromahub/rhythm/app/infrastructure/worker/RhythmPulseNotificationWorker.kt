@@ -19,7 +19,7 @@ import java.util.Calendar
 import kotlin.random.Random
 
 /**
- * Periodic worker that sends concise Rhythm Pulse reminders and listening tips.
+ * Periodic worker that sends concise Rhythm Tips reminders and listening tips.
  */
 class RhythmPulseNotificationWorker(
     context: Context,
@@ -41,7 +41,7 @@ class RhythmPulseNotificationWorker(
         return@withContext try {
             val appSettings = AppSettings.getInstance(applicationContext)
             if (!appSettings.rhythmPulseNotificationsEnabled.value) {
-                Log.d(TAG, "Rhythm pulse notifications disabled, skipping")
+                Log.d(TAG, "Rhythm tips notifications disabled, skipping")
                 return@withContext Result.success()
             }
 
@@ -49,7 +49,7 @@ class RhythmPulseNotificationWorker(
             sendPulseNotification(message)
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to send Rhythm pulse notification", e)
+            Log.e(TAG, "Failed to send Rhythm tips notification", e)
             Result.retry()
         }
     }

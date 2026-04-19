@@ -128,7 +128,8 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_HIDDEN_LIBRARY_TABS = "hidden_library_tabs"
         private const val KEY_HIDDEN_PLAYER_CHIPS = "hidden_player_chips"
         private const val KEY_GROUP_BY_ALBUM_ARTIST = "group_by_album_artist" // New setting for album artist grouping
-        private const val KEY_IGNORE_MEDIASTORE_COVERS = "ignore_mediastore_covers" // Ignore Android MediaStore covers, read embedded art directly
+        private const val KEY_PREFER_SONG_ARTWORK = "prefer_song_artwork" // Prefer per-song embedded artwork over shared album art
+        private const val KEY_IGNORE_MEDIASTORE_COVERS = "ignore_mediastore_covers" // Legacy key kept for migration compatibility
         private const val KEY_LOSSLESS_ARTWORK = "lossless_artwork" // Show cover art without downscaling/compression
         
         // Audio Device Settings
@@ -330,6 +331,7 @@ class AppSettings private constructor(context: Context) {
         // Media Scan Tracking
         private const val KEY_LAST_SCAN_TIMESTAMP = "last_scan_timestamp"
         private const val KEY_LAST_SCAN_DURATION = "last_scan_duration"
+        private const val KEY_PENDING_FULL_MEDIA_RESCAN = "pending_full_media_rescan"
         
         // Media Scan Filtering
         private const val KEY_ALLOWED_FORMATS = "allowed_formats"
@@ -704,9 +706,18 @@ class AppSettings private constructor(context: Context) {
     private val _groupByAlbumArtist = MutableStateFlow(prefs.getBoolean(KEY_GROUP_BY_ALBUM_ARTIST, true)) // Default true for better organization
     val groupByAlbumArtist: StateFlow<Boolean> = _groupByAlbumArtist.asStateFlow()
     
-    // Ignore MediaStore Covers - Read embedded album art directly
-    private val _ignoreMediaStoreCovers = MutableStateFlow(prefs.getBoolean(KEY_IGNORE_MEDIASTORE_COVERS, false))
-    val ignoreMediaStoreCovers: StateFlow<Boolean> = _ignoreMediaStoreCovers.asStateFlow()
+    // Prefer per-song embedded artwork over shared MediaStore album art.
+    private val _preferSongArtwork = MutableStateFlow(
+        if (prefs.contains(KEY_PREFER_SONG_ARTWORK)) {
+            prefs.getBoolean(KEY_PREFER_SONG_ARTWORK, false)
+        } else {
+            prefs.getBoolean(KEY_IGNORE_MEDIASTORE_COVERS, false)
+        }
+    )
+    val preferSongArtwork: StateFlow<Boolean> = _preferSongArtwork.asStateFlow()
+
+    @Deprecated("Use preferSongArtwork")
+    val ignoreMediaStoreCovers: StateFlow<Boolean> = preferSongArtwork
 
     // Lossless Artwork - Show cover art as-is without compression
     private val _losslessArtwork = MutableStateFlow(prefs.getBoolean(KEY_LOSSLESS_ARTWORK, false))
@@ -1438,6 +1449,9 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
      * This must be done after all MutableStateFlow declarations to avoid NullPointerException
      */
     init {
+        migrateLegacyArtworkPreferenceIfNeeded()
+        normalizeArtworkPreferenceStateIfNeeded()
+
         // Schedule auto-backup if enabled
         if (prefs.getBoolean(KEY_AUTO_BACKUP_ENABLED, false)) {
             scheduleAutoBackup()
@@ -1456,6 +1470,29 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
 
         if (prefs.getBoolean(KEY_RHYTHM_PULSE_NOTIFICATIONS_ENABLED, false)) {
             scheduleRhythmPulseNotificationWorker()
+        }
+    }
+
+    private fun migrateLegacyArtworkPreferenceIfNeeded() {
+        if (prefs.contains(KEY_PREFER_SONG_ARTWORK)) {
+            return
+        }
+
+        if (!prefs.contains(KEY_IGNORE_MEDIASTORE_COVERS)) {
+            return
+        }
+
+        val legacyValue = prefs.getBoolean(KEY_IGNORE_MEDIASTORE_COVERS, false)
+        prefs.edit().putBoolean(KEY_PREFER_SONG_ARTWORK, legacyValue).apply()
+        _preferSongArtwork.value = legacyValue
+        Log.d("AppSettings", "Migrated legacy ignore_mediastore_covers to prefer_song_artwork")
+    }
+
+    private fun normalizeArtworkPreferenceStateIfNeeded() {
+        if (_losslessArtwork.value && !_preferSongArtwork.value) {
+            prefs.edit().putBoolean(KEY_LOSSLESS_ARTWORK, false).apply()
+            _losslessArtwork.value = false
+            Log.d("AppSettings", "Normalized artwork preferences by disabling lossless mode while song-based artwork is off")
         }
     }
     
@@ -1709,19 +1746,77 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         prefs.edit().putBoolean(KEY_GROUP_BY_ALBUM_ARTIST, enable).apply()
         _groupByAlbumArtist.value = enable
     }
-    
+
+    fun setPreferSongArtwork(enabled: Boolean) {
+        val changed = _preferSongArtwork.value != enabled
+        val disableLossless = !enabled && _losslessArtwork.value
+        prefs.edit()
+            .putBoolean(KEY_PREFER_SONG_ARTWORK, enabled)
+            .putBoolean(KEY_IGNORE_MEDIASTORE_COVERS, enabled)
+            .putBoolean(KEY_LOSSLESS_ARTWORK, if (disableLossless) false else _losslessArtwork.value)
+            .apply()
+        _preferSongArtwork.value = enabled
+        if (disableLossless) {
+            _losslessArtwork.value = false
+        }
+
+        if (changed || disableLossless) {
+            val reason = when {
+                enabled -> "prefer_song_artwork_enabled"
+                disableLossless -> "prefer_song_artwork_disabled_and_lossless_reset"
+                else -> "prefer_song_artwork_disabled"
+            }
+            requestFullMediaRescanOnNextLaunch(reason = reason)
+        }
+    }
+
+    @Deprecated("Use setPreferSongArtwork")
     fun setIgnoreMediaStoreCovers(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_IGNORE_MEDIASTORE_COVERS, enabled).apply()
-        _ignoreMediaStoreCovers.value = enabled
+        setPreferSongArtwork(enabled)
     }
 
     fun setLosslessArtwork(enabled: Boolean) {
+        val changed = _losslessArtwork.value != enabled
         prefs.edit().putBoolean(KEY_LOSSLESS_ARTWORK, enabled).apply()
         _losslessArtwork.value = enabled
-        // Lossless artwork requires ignoring MediaStore covers to take effect
-        if (enabled && !_ignoreMediaStoreCovers.value) {
-            setIgnoreMediaStoreCovers(true)
+
+        // Lossless artwork requires per-song artwork mode to take effect.
+        if (enabled && !_preferSongArtwork.value) {
+            setPreferSongArtwork(true)
+        } else if (changed) {
+            val reason = if (enabled) {
+                "lossless_artwork_enabled"
+            } else {
+                "lossless_artwork_disabled"
+            }
+            requestFullMediaRescanOnNextLaunch(reason = reason)
         }
+    }
+
+    fun requestFullMediaRescanOnNextLaunch(reason: String = "unspecified") {
+        prefs.edit()
+            .putBoolean(KEY_PENDING_FULL_MEDIA_RESCAN, true)
+            .putBoolean(KEY_INITIAL_MEDIA_SCAN_COMPLETED, false)
+            .putBoolean(KEY_GENRE_DETECTION_COMPLETED, false)
+            .putLong(KEY_LAST_SCAN_TIMESTAMP, 0L)
+            .putLong(KEY_LAST_SCAN_DURATION, 0L)
+            .apply()
+
+        _initialMediaScanCompleted.value = false
+        _genreDetectionCompleted.value = false
+        _lastScanTimestamp.value = 0L
+        _lastScanDuration.value = 0L
+
+        Log.i("AppSettings", "Full media rescan scheduled for next launch (reason=$reason)")
+    }
+
+    fun consumePendingFullMediaRescanRequest(): Boolean {
+        val pending = prefs.getBoolean(KEY_PENDING_FULL_MEDIA_RESCAN, false)
+        if (pending) {
+            prefs.edit().putBoolean(KEY_PENDING_FULL_MEDIA_RESCAN, false).apply()
+            Log.i("AppSettings", "Consuming pending full media rescan request")
+        }
+        return pending
     }
     
     fun setShowAlphabetBar(show: Boolean) {
@@ -2480,13 +2575,21 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     }
 
     fun setMediaScanMode(mode: String) {
+        val changed = _mediaScanMode.value != mode
         prefs.edit().putString(KEY_MEDIA_SCAN_MODE, mode).apply()
         _mediaScanMode.value = mode
+        if (changed) {
+            requestFullMediaRescanOnNextLaunch(reason = "media_scan_mode_changed")
+        }
     }
 
     fun setIncludeHiddenWhitelistedMedia(include: Boolean) {
+        val changed = _includeHiddenWhitelistedMedia.value != include
         prefs.edit().putBoolean(KEY_INCLUDE_HIDDEN_WHITELISTED_MEDIA, include).apply()
         _includeHiddenWhitelistedMedia.value = include
+        if (changed) {
+            requestFullMediaRescanOnNextLaunch(reason = "hidden_nomedia_scan_toggle_changed")
+        }
     }
 
     fun setUpdateCheckIntervalHours(hours: Int) {
@@ -2927,6 +3030,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
             val json = Gson().toJson(currentList)
             prefs.edit().putString(KEY_WHITELISTED_FOLDERS, json).apply()
             _whitelistedFolders.value = currentList
+            requestFullMediaRescanOnNextLaunch(reason = "whitelist_folder_added")
         }
     }
     
@@ -2936,6 +3040,7 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
             val json = Gson().toJson(currentList)
             prefs.edit().putString(KEY_WHITELISTED_FOLDERS, json).apply()
             _whitelistedFolders.value = currentList
+            requestFullMediaRescanOnNextLaunch(reason = "whitelist_folder_removed")
         }
     }
     
@@ -2946,8 +3051,12 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     }
     
     fun clearFolderWhitelist() {
+        val hadValues = _whitelistedFolders.value.isNotEmpty()
         prefs.edit().remove(KEY_WHITELISTED_FOLDERS).apply()
         _whitelistedFolders.value = emptyList()
+        if (hadValues) {
+            requestFullMediaRescanOnNextLaunch(reason = "whitelist_folders_cleared")
+        }
     }
 
     // Pinned Folders Methods (Explorer)
@@ -3040,21 +3149,33 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
     }
     
     fun setAllowedFormats(formats: Set<String>) {
+        val changed = _allowedFormats.value != formats
         prefs.edit().putStringSet(KEY_ALLOWED_FORMATS, formats).apply()
         _allowedFormats.value = formats
         Log.d("AppSettings", "Allowed formats updated: $formats")
+        if (changed) {
+            requestFullMediaRescanOnNextLaunch(reason = "allowed_formats_changed")
+        }
     }
     
     fun setMinimumBitrate(bitrate: Int) {
+        val changed = _minimumBitrate.value != bitrate
         prefs.edit().putInt(KEY_MINIMUM_BITRATE, bitrate).apply()
         _minimumBitrate.value = bitrate
         Log.d("AppSettings", "Minimum bitrate set to: ${bitrate}kbps")
+        if (changed) {
+            requestFullMediaRescanOnNextLaunch(reason = "minimum_bitrate_changed")
+        }
     }
     
     fun setMinimumDuration(duration: Long) {
+        val changed = _minimumDuration.value != duration
         prefs.edit().putLong(KEY_MINIMUM_DURATION, duration).apply()
         _minimumDuration.value = duration
         Log.d("AppSettings", "Minimum duration set to: ${duration}ms")
+        if (changed) {
+            requestFullMediaRescanOnNextLaunch(reason = "minimum_duration_changed")
+        }
     }
     
     /**
@@ -3155,18 +3276,18 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
                 workRequest
             )
 
-            Log.d("AppSettings", "Rhythm pulse worker scheduled: every $intervalHours hours")
+            Log.d("AppSettings", "Rhythm tips worker scheduled: every $intervalHours hours")
         } catch (e: Exception) {
-            Log.e("AppSettings", "Failed to schedule Rhythm pulse worker", e)
+            Log.e("AppSettings", "Failed to schedule Rhythm tips worker", e)
         }
     }
 
     private fun cancelRhythmPulseNotificationWorker() {
         try {
             WorkManager.getInstance(context).cancelUniqueWork(RhythmPulseNotificationWorker.WORK_NAME)
-            Log.d("AppSettings", "Rhythm pulse worker cancelled")
+            Log.d("AppSettings", "Rhythm tips worker cancelled")
         } catch (e: Exception) {
-            Log.e("AppSettings", "Failed to cancel Rhythm pulse worker", e)
+            Log.e("AppSettings", "Failed to cancel Rhythm tips worker", e)
         }
     }
     
@@ -3717,6 +3838,11 @@ private val _autoCheckForUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CH
         _artistCollaborationMode.value = prefs.getBoolean(KEY_ARTIST_COLLABORATION_MODE, false)
         _songsSortOrder.value = prefs.getString(KEY_SONGS_SORT_ORDER, "TITLE_ASC") ?: "TITLE_ASC"
         _libraryCombineDiscs.value = prefs.getBoolean(KEY_LIBRARY_COMBINE_DISCS, false)
+        _preferSongArtwork.value = if (prefs.contains(KEY_PREFER_SONG_ARTWORK)) {
+            prefs.getBoolean(KEY_PREFER_SONG_ARTWORK, false)
+        } else {
+            prefs.getBoolean(KEY_IGNORE_MEDIASTORE_COVERS, false)
+        }
         _albumBottomSheetDiscFilter.value = prefs.getInt(KEY_ALBUM_BOTTOM_SHEET_DISC_FILTER, 0).coerceAtLeast(0)
         _albumBottomSheetGradientBlur.value = prefs.getBoolean(KEY_ALBUM_BOTTOM_SHEET_GRADIENT_BLUR, true)
         

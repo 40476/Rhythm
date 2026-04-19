@@ -270,8 +270,12 @@ object CacheManager {
         val details = mutableMapOf<String, Long>()
         
         try {
-            // Internal cache size
-            details["Internal Cache"] = getDirectorySize(context.cacheDir)
+            val embeddedArtworkSize = getEmbeddedArtworkCacheSize(context.cacheDir)
+            val internalCacheSize = getDirectorySize(context.cacheDir)
+            val nonArtworkInternalSize = (internalCacheSize - embeddedArtworkSize).coerceAtLeast(0L)
+
+            details["Internal Cache (Other)"] = nonArtworkInternalSize
+            details["Embedded Artwork Cache"] = embeddedArtworkSize
             
             // External cache size
             context.externalCacheDir?.let { externalCache ->
@@ -285,6 +289,26 @@ object CacheManager {
         }
         
         return@withContext details
+    }
+
+    private fun getEmbeddedArtworkCacheSize(cacheDir: File): Long {
+        val files = mutableListOf<File>()
+
+        val artworkCacheDir = File(cacheDir, "embedded_artwork")
+        artworkCacheDir.listFiles { file -> file.isFile }?.let { files.addAll(it) }
+
+        cacheDir.listFiles { file ->
+            file.isFile &&
+                (file.name.startsWith("embedded_art_") || file.name.startsWith("embedded_art_lossless_"))
+        }?.let { files.addAll(it) }
+
+        return files.sumOf { file ->
+            try {
+                file.length()
+            } catch (_: Exception) {
+                0L
+            }
+        }
     }
     
     /**
