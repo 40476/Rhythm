@@ -24,7 +24,7 @@ object StreamingMusicModule {
      */
     fun provideStreamingMusicRepository(context: Context): StreamingMusicRepository {
         return streamingMusicRepository ?: synchronized(this) {
-            streamingMusicRepository ?: StreamingMusicRepositoryImpl().also {
+            streamingMusicRepository ?: StreamingMusicRepositoryImpl(context.applicationContext).also {
                 streamingMusicRepository = it
             }
         }

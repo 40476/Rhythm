@@ -735,7 +735,7 @@ class AppSettings private constructor(context: Context) {
     private val _appMode = MutableStateFlow(prefs.getString(KEY_APP_MODE, "LOCAL") ?: "LOCAL")
     val appMode: StateFlow<String> = _appMode.asStateFlow()
     
-    private val _streamingService = MutableStateFlow(prefs.getString(KEY_STREAMING_SERVICE, "SPOTIFY") ?: "SPOTIFY")
+    private val _streamingService = MutableStateFlow(prefs.getString(KEY_STREAMING_SERVICE, "SUBSONIC") ?: "SUBSONIC")
     val streamingService: StateFlow<String> = _streamingService.asStateFlow()
     
     private val _streamingQuality = MutableStateFlow(prefs.getString(KEY_STREAMING_QUALITY, "HIGH") ?: "HIGH")

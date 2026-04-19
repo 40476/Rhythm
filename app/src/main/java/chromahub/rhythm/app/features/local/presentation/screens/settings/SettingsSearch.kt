@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.ChangeCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Equalizer
@@ -647,6 +648,15 @@ fun buildSettingsSearchIndex(context: Context): List<SearchableSettingItem> {
             icon = Icons.Default.Science,
             route = SettingsRoutes.EXPERIMENTAL_FEATURES,
             parentScreen = context.getString(R.string.settings_section_advanced)
+        ))
+        add(SearchableSettingItem(
+            id = "experimental_go_mode",
+            title = context.getString(R.string.exp_go_mode),
+            description = context.getString(R.string.exp_go_mode_desc),
+            keywords = listOf("go mode", "rhythm go", "streaming mode", "streaming navigation", "integration"),
+            icon = Icons.Default.CloudQueue,
+            route = SettingsRoutes.EXPERIMENTAL_FEATURES,
+            parentScreen = context.getString(R.string.settings_experimental_features)
         ))
         
         // ======================== THEME CUSTOMIZATION SCREEN ========================

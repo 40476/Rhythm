@@ -5568,6 +5568,7 @@ fun UpdatesSettingsScreen(onBackClick: () -> Unit) {
 fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
     val context = LocalContext.current
     val appSettings = AppSettings.getInstance(context)
+    val appMode by appSettings.appMode.collectAsState()
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsState()
     val showLyrics by appSettings.showLyrics.collectAsState()
     val showLyricsTranslation by appSettings.showLyricsTranslation.collectAsState()
@@ -5684,6 +5685,15 @@ fun ExperimentalFeaturesScreen(onBackClick: () -> Unit) {
                             context.getString(R.string.exp_force_player_compact_mode_desc),
                             toggleState = forcePlayerCompactMode,
                             onToggleChange = { appSettings.setForcePlayerCompactMode(it) }
+                        ),
+                        SettingItem(
+                            Icons.Default.CloudQueue,
+                            context.getString(R.string.exp_go_mode),
+                            context.getString(R.string.exp_go_mode_desc),
+                            toggleState = appMode == "STREAMING",
+                            onToggleChange = { enabled ->
+                                appSettings.setAppMode(if (enabled) "STREAMING" else "LOCAL")
+                            }
                         )
                     )
                 )

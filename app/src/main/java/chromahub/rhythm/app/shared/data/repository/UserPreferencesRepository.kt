@@ -86,11 +86,11 @@ class UserPreferencesRepository(context: Context) {
     }
     
     private fun loadStreamingConfig(): StreamingConfig {
-        val serviceName = prefs.getString(KEY_ACTIVE_SERVICE, SourceType.SPOTIFY.name)
+        val serviceName = prefs.getString(KEY_ACTIVE_SERVICE, SourceType.SUBSONIC.name)
         val activeService = try {
-            SourceType.valueOf(serviceName ?: SourceType.SPOTIFY.name)
+            SourceType.valueOf(serviceName ?: SourceType.SUBSONIC.name)
         } catch (e: IllegalArgumentException) {
-            SourceType.SPOTIFY
+            SourceType.SUBSONIC
         }
         
         val qualityName = prefs.getString(KEY_STREAMING_QUALITY, StreamingQuality.HIGH.name)

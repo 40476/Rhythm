@@ -25,7 +25,7 @@ data class StreamingConfig(
     /**
      * The currently selected streaming service.
      */
-    val activeService: SourceType = SourceType.SPOTIFY,
+    val activeService: SourceType = SourceType.SUBSONIC,
     
     /**
      * Whether the user is authenticated with the active service.

@@ -173,6 +173,7 @@ fun RhythmNavigation(
                         "STREAMING" -> {
                             // Show streaming navigation with proper bottom nav
                             StreamingNavigation(
+                                localMusicViewModel = musicViewModel,
                                 onNavigateToSettings = navigateToSettings,
                                 onNavigateToPlayer = { /* TODO */ },
                                 onSwitchToLocalMode = {
