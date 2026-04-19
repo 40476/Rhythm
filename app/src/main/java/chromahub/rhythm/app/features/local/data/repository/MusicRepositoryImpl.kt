@@ -589,6 +589,7 @@ class MusicRepository(context: Context) {
         val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
+            MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
@@ -666,6 +667,7 @@ class MusicRepository(context: Context) {
                     ColumnIndices(
                         id = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID),
                         title = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE),
+                        displayName = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME),
                         artist = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST),
                         album = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM),
                         albumId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID),
@@ -677,7 +679,8 @@ class MusicRepository(context: Context) {
                         // GENRE was added to MediaStore in API 30; use getColumnIndex (may be -1 on Android 8/9)
                         genre = cursor.getColumnIndex(MediaStore.Audio.Media.GENRE),
                         albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST), // May be -1 on older devices
-                        discNumber = cursor.getColumnIndex("disc_number")
+                        discNumber = cursor.getColumnIndex("disc_number"),
+                        data = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
                     )
                 } catch (e: IllegalArgumentException) {
                     Log.e(TAG, "Required column not found in MediaStore on Android ${Build.VERSION.SDK_INT}", e)
@@ -836,6 +839,7 @@ class MusicRepository(context: Context) {
         val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
+            MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
@@ -843,7 +847,8 @@ class MusicRepository(context: Context) {
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.DATE_ADDED,
-            MediaStore.Audio.Media.SIZE
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.DATA
         ).apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 add(MediaStore.Audio.Media.GENRE)
@@ -876,6 +881,7 @@ class MusicRepository(context: Context) {
                     ColumnIndices(
                         id = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID),
                         title = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE),
+                        displayName = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME),
                         artist = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST),
                         album = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM),
                         albumId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID),
@@ -887,7 +893,8 @@ class MusicRepository(context: Context) {
                         // GENRE column is optional; not available on all Android versions (pre-API 30)
                         genre = cursor.getColumnIndex(MediaStore.Audio.Media.GENRE),
                         albumArtist = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST),
-                        discNumber = cursor.getColumnIndex("disc_number")
+                        discNumber = cursor.getColumnIndex("disc_number"),
+                        data = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
                     )
                 } catch (e: IllegalArgumentException) {
                     Log.e(TAG, "Required column not found in MediaStore", e)
@@ -949,6 +956,7 @@ class MusicRepository(context: Context) {
     private data class ColumnIndices(
         val id: Int,
         val title: Int,
+        val displayName: Int,
         val artist: Int,
         val album: Int,
         val albumId: Int,
@@ -959,7 +967,8 @@ class MusicRepository(context: Context) {
         val size: Int,
         val genre: Int,
         val albumArtist: Int, // May be -1 if not available on older devices
-        val discNumber: Int
+        val discNumber: Int,
+        val data: Int
     )
 
     private fun loadSongsFromWhitelistedFolders(
@@ -1022,12 +1031,15 @@ class MusicRepository(context: Context) {
         return try {
             retriever.setDataSource(file.absolutePath)
 
-            val title = normalizeMetadataText(
+            val extractedTitle = normalizeMetadataText(
                 retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
             )
                 ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: file.nameWithoutExtension
+            val title = if (!extractedTitle.isNullOrBlank() && !isLikelyCorruptedMetadata(extractedTitle)) {
+                extractedTitle
+            } else {
+                selectBestMetadataText(extractedTitle, file.nameWithoutExtension)
+            } ?: file.nameWithoutExtension
             val artist = normalizeMetadataText(
                 retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
             )
@@ -1118,10 +1130,79 @@ class MusicRepository(context: Context) {
         }.getOrDefault(raw)
     }
 
+    private fun titleFromDisplayName(displayName: String?): String? {
+        val normalized = normalizeMetadataText(displayName)?.trim() ?: return null
+        if (normalized.isBlank()) return null
+
+        return normalized.substringBeforeLast('.', normalized)
+            .trim()
+            .takeIf { it.isNotBlank() }
+    }
+
+    private fun isLikelyCorruptedMetadata(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isBlank() || trimmed.equals("<unknown>", ignoreCase = true)) {
+            return true
+        }
+
+        if (trimmed.any { it == '\uFFFD' }) {
+            return true
+        }
+
+        val questionMarkCount = trimmed.count { it == '?' }
+        if (questionMarkCount >= 2) {
+            return true
+        }
+
+        // A question mark embedded inside a word usually indicates lossy character conversion.
+        return questionMarkCount > 0 && Regex("\\p{L}\\?\\p{L}").containsMatchIn(trimmed)
+    }
+
+    private fun metadataQualityScore(text: String): Int {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return Int.MIN_VALUE
+
+        var score = trimmed.length * 4
+        score -= trimmed.count { it == '\uFFFD' } * 40
+        score -= trimmed.count { it == '?' } * 25
+        if (trimmed.equals("<unknown>", ignoreCase = true)) {
+            score -= 200
+        }
+        if (trimmed.any { it.code > 0x7F }) {
+            score += 8
+        }
+
+        return score
+    }
+
+    private fun selectBestMetadataText(vararg candidates: String?): String? {
+        return candidates
+            .mapNotNull { candidate -> candidate?.trim()?.takeIf { it.isNotBlank() } }
+            .maxByOrNull { candidate -> metadataQualityScore(candidate) }
+    }
+
     private fun createSongFromCursor(cursor: android.database.Cursor, indices: ColumnIndices, appSettings: AppSettings = AppSettings.getInstance(context)): Song? {
         return try {
             val id = cursor.getLong(indices.id)
-            val title = normalizeMetadataText(cursor.getString(indices.title))?.trim() ?: return null
+            val rawTitle = normalizeMetadataText(cursor.getString(indices.title))?.trim()
+            val displayNameTitle = if (indices.displayName >= 0 && !cursor.isNull(indices.displayName)) {
+                titleFromDisplayName(cursor.getString(indices.displayName))
+            } else {
+                null
+            }
+            val pathTitle = if (indices.data >= 0 && !cursor.isNull(indices.data)) {
+                File(cursor.getString(indices.data)).nameWithoutExtension
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+
+            val title = if (!rawTitle.isNullOrBlank() && !isLikelyCorruptedMetadata(rawTitle)) {
+                rawTitle
+            } else {
+                selectBestMetadataText(rawTitle, displayNameTitle, pathTitle)
+            } ?: return null
             val rawArtist = normalizeMetadataText(cursor.getString(indices.artist))?.trim() ?: "Unknown Artist"
             
             // Keep the full artist string so songs appear under all their artists.
