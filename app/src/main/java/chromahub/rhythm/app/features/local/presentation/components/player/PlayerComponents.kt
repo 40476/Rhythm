@@ -92,6 +92,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import chromahub.rhythm.app.shared.presentation.components.common.M3LinearLoader
+import chromahub.rhythm.app.shared.presentation.components.common.M3CircularLoader
 import chromahub.rhythm.app.features.local.presentation.components.player.PlayingEqIcon
 import chromahub.rhythm.app.shared.presentation.components.common.AutoScrollingTextOnDemand
 import androidx.compose.material3.HorizontalDivider
@@ -545,22 +546,32 @@ fun MiniPlayer(
                 }
             }
 
-            // Customizable linear progress bar for the mini player (only when not using circular, phone only)
-            if (song != null && miniPlayerShowProgress && !miniPlayerUseCircularProgress && !useTabletLayout) {
-                // Linear styled progress bar with more waves for MiniPlayer
-                StyledProgressBar(
-                    progress = animatedProgress,
-                    style = try { ProgressStyle.valueOf(miniPlayerProgressStyle) } catch (e: Exception) { ProgressStyle.NORMAL },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 28.dp),
-                    progressColor = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                    isPlaying = isPlaying,
-                    height = 4.dp,
-                    waveAmplitudeWhenPlaying = 3.dp,
-                    waveLength = 30.dp // Shorter wavelength = more waves for MiniPlayer
-                )
+            // Mini player progress bar (phone)
+            if (song != null && miniPlayerShowProgress && !useTabletLayout) {
+                if (miniPlayerUseCircularProgress) {
+                    M3LinearLoader(
+                        progress = animatedProgress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp)
+                            .height(4.dp),
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                    )
+                } else {
+                    StyledProgressBar(
+                        progress = animatedProgress,
+                        style = try { ProgressStyle.valueOf(miniPlayerProgressStyle) } catch (e: Exception) { ProgressStyle.NORMAL },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp),
+                        progressColor = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                        isPlaying = isPlaying,
+                        height = 4.dp,
+                        waveAmplitudeWhenPlaying = 3.dp,
+                        waveLength = 30.dp // Shorter wavelength = more waves for MiniPlayer
+                    )
+                }
             }
 
             if (useTabletLayout) {
@@ -695,19 +706,29 @@ fun MiniPlayer(
                         }
                     }
 
-                    // Linear progress bar for tablet (only when not using circular)
-                    if (song != null && miniPlayerShowProgress && !miniPlayerUseCircularProgress) {
-                        StyledProgressBar(
-                            progress = animatedProgress,
-                            style = try { ProgressStyle.valueOf(miniPlayerProgressStyle) } catch (e: Exception) { ProgressStyle.NORMAL },
-                            modifier = Modifier.fillMaxWidth(),
-                            progressColor = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                            isPlaying = isPlaying,
-                            height = 3.dp,
-                            waveAmplitudeWhenPlaying = 2.dp,
-                            waveLength = 20.dp
-                        )
+                    // Tablet progress bar
+                    if (song != null && miniPlayerShowProgress) {
+                        if (miniPlayerUseCircularProgress) {
+                            M3LinearLoader(
+                                progress = animatedProgress,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp),
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            )
+                        } else {
+                            StyledProgressBar(
+                                progress = animatedProgress,
+                                style = try { ProgressStyle.valueOf(miniPlayerProgressStyle) } catch (e: Exception) { ProgressStyle.NORMAL },
+                                modifier = Modifier.fillMaxWidth(),
+                                progressColor = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                isPlaying = isPlaying,
+                                height = 3.dp,
+                                waveAmplitudeWhenPlaying = 2.dp,
+                                waveLength = 20.dp
+                            )
+                        }
                     }
 
                     // Playback controls with gesture support
@@ -831,10 +852,11 @@ fun MiniPlayer(
                             interactionSource = playInteractionSource
                         ) {
                             if (isMediaLoading) {
-                                CircularProgressIndicator(
+                                M3CircularLoader(
                                     modifier = Modifier.size(if (isLargeHeight) 24.dp else 20.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.dp
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                                    strokeWidth = 2f
                                 )
                             } else {
                                 Icon(
@@ -1093,10 +1115,11 @@ fun MiniPlayer(
                                 interactionSource = phonePlayInteractionSource
                             ) {
                                 if (isMediaLoading) {
-                                    CircularProgressIndicator(
+                                    M3CircularLoader(
                                         modifier = Modifier.size(if (isCompactHeight) 14.dp else 18.dp),
                                         color = MaterialTheme.colorScheme.onPrimary,
-                                        strokeWidth = 2.dp
+                                        trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                                        strokeWidth = 2f
                                     )
                                 } else {
                                     Icon(
@@ -1139,10 +1162,11 @@ fun MiniPlayer(
                             interactionSource = stdPlayInteractionSource
                         ) {
                             if (isMediaLoading) {
-                                CircularProgressIndicator(
+                                M3CircularLoader(
                                     modifier = Modifier.size(if (isCompactHeight) 14.dp else 18.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.dp
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                                    strokeWidth = 2f
                                 )
                             } else {
                                 Icon(

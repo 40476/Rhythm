@@ -645,11 +645,9 @@ fun LibraryScreen(
     val pullToRefreshState = rememberPullToRefreshState()
     var isRefreshing by remember { mutableStateOf(false) }
     val isTabletLayout = LocalConfiguration.current.screenWidthDp >= 600
-    val isPlaylistTabSelected = visibleTabIds.getOrNull(selectedTabIndex) == "PLAYLISTS"
     val baseLibraryBottomPadding =
         if (isTabletLayout) 16.dp else (MusicDimensions.bottomNavigationHeight + 16.dp)
-    val playlistFabOverlayPadding = if (isPlaylistTabSelected) 84.dp else 0.dp
-    val libraryBottomOverlayPadding = baseLibraryBottomPadding + playlistFabOverlayPadding
+    val libraryBottomOverlayPadding = baseLibraryBottomPadding
     
     // Update refreshing state based on library refreshing
     LaunchedEffect(isLibraryRefreshing) {

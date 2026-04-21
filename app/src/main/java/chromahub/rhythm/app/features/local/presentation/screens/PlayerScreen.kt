@@ -172,6 +172,8 @@ import chromahub.rhythm.app.shared.presentation.components.common.WaveSlider
 import chromahub.rhythm.app.shared.presentation.components.common.StyledProgressBar
 import chromahub.rhythm.app.shared.presentation.components.common.ProgressStyle
 import chromahub.rhythm.app.shared.presentation.components.common.ThumbStyle
+import chromahub.rhythm.app.shared.presentation.components.common.M3CircularLoader
+import chromahub.rhythm.app.shared.presentation.components.common.M3LinearLoader
 import chromahub.rhythm.app.shared.presentation.components.common.FixedHeaderScreen
 import chromahub.rhythm.app.shared.presentation.components.icons.RhythmIcons
 import chromahub.rhythm.app.shared.presentation.components.common.AutoScrollingTextOnDemand
@@ -2116,10 +2118,11 @@ fun PlayerScreen(
                                                                 modifier = Modifier.fillMaxSize(),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
-                                                                CircularProgressIndicator(
+                                                                M3CircularLoader(
+                                                                    modifier = Modifier.size(28.dp),
                                                                     color = MaterialTheme.colorScheme.primary,
-                                                                    strokeWidth = 2.dp,
-                                                                    modifier = Modifier.size(28.dp)
+                                                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                                                    strokeWidth = 2f
                                                                 )
                                                             }
                                                         } else if (!parsedLyrics.isNullOrEmpty()) {
@@ -2333,7 +2336,15 @@ fun PlayerScreen(
                             }
 
                             // Customizable progress slider based on user setting
-                            if (playerProgressStyle == "WAVY") {
+                            if (showLoaderInPlayPauseButton) {
+                                M3LinearLoader(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 8.dp)
+                                        .height(8.dp),
+                                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
+                                )
+                            } else if (playerProgressStyle == "WAVY") {
                                 // WaveSlider: proper animated waves + morphing thumb + play/pause reaction
                                 WaveSlider(
                                     value = if (isScrubbing && enhancedSeekingEnabled) scrubProgress else progress,

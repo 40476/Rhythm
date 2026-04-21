@@ -2,13 +2,16 @@
 
 package chromahub.rhythm.app.shared.presentation.components.common
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -28,13 +31,24 @@ fun M3LinearLoader(
     fourColor: Boolean = false,
     isExpressive: Boolean = true
 ) {
+    val targetProgress = progress?.coerceIn(0f, 1f) ?: 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "m3_linear_loader_progress"
+    )
+
     if (progress != null) {
         LinearWavyProgressIndicator(
-            progress = { progress },
-            modifier = modifier
+            progress = { animatedProgress },
+            modifier = modifier,
+            trackColor = trackColor
         )
     } else {
-        LinearWavyProgressIndicator(modifier = modifier)
+        LinearWavyProgressIndicator(
+            modifier = modifier,
+            trackColor = trackColor
+        )
     }
 }
 
@@ -53,13 +67,26 @@ fun M3CircularLoader(
     fourColor: Boolean = false,
     isExpressive: Boolean = true
 ) {
+    val targetProgress = progress?.coerceIn(0f, 1f) ?: 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+        label = "m3_circular_loader_progress"
+    )
+
     if (progress != null) {
         CircularWavyProgressIndicator(
-            progress = { progress },
-            modifier = modifier
+            progress = { animatedProgress },
+            modifier = modifier,
+            color = color,
+            trackColor = trackColor
         )
     } else {
-        CircularWavyProgressIndicator(modifier = modifier)
+        CircularWavyProgressIndicator(
+            modifier = modifier,
+            color = color,
+            trackColor = trackColor
+        )
     }
 }
 

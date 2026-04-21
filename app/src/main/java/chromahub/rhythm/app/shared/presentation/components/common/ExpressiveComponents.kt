@@ -1638,10 +1638,11 @@ private fun ExpressiveMorphingPlayPauseButton(
                         .size(if (isExtraSmallWidth) 20.dp else 24.dp)
                         .graphicsLayer { rotationZ = rotation }
                 ) {
-                    CircularProgressIndicator(
+                    M3CircularLoader(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
+                        trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                        strokeWidth = 2f
                     )
                 }
             } else {
@@ -2111,10 +2112,11 @@ fun ExpressiveLoadingPlayButton(
         tonalElevation = 4.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
-            androidx.compose.material3.CircularProgressIndicator(
+            M3CircularLoader(
                 modifier = Modifier.size(size * 0.7f),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                strokeWidth = 3.dp
+                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.24f),
+                strokeWidth = 3f
             )
         }
     }
@@ -2281,11 +2283,12 @@ fun ExpressiveProgressBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProgressIndicator(
-                progress = { progress.coerceIn(0f, 1f) },
+            M3CircularLoader(
+                progress = progress.coerceIn(0f, 1f),
                 modifier = Modifier.size(24.dp),
                 color = color,
-                strokeWidth = 2.dp
+                trackColor = trackColor,
+                strokeWidth = 2f
             )
 
             if (showPercentage) {
@@ -2315,10 +2318,11 @@ fun ExpressiveLoadingIndicator(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CircularProgressIndicator(
+        M3CircularLoader(
             modifier = Modifier.size(size),
             color = color,
-            strokeWidth = strokeWidth
+            trackColor = color.copy(alpha = 0.24f),
+            strokeWidth = strokeWidth.value
         )
 
         if (message != null) {
@@ -2677,10 +2681,11 @@ fun ExpressiveAsyncButton(
         enabled = enabled && !isLoading
     ) {
         if (isLoading) {
-            CircularProgressIndicator(
+            M3CircularLoader(
                 modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary
+                strokeWidth = 2f,
+                color = MaterialTheme.colorScheme.onPrimary,
+                trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f)
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
